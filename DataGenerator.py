@@ -1,26 +1,42 @@
 import numpy as np
-from collections import Sequence
+import cv2
 from keras.applications.resnet50 import preprocess_input
+from keras.utils import np_utils, Sequence
 from skimage.io import imread
 
 
 class DataGenerator(Sequence):
 
-    def __init__(self, image_filenames, labels, batch_size):
+    def __init__(self, data_pair, nb_classes, batch_size=32):
         """
 
         :param image_filenames: an array of image file names
         :param labels: an array of corresponding labels
         :param batch_size: size of the generated batch
         """
-        self.image_filenames, self.labels = image_filenames, labels
+        self.data_pair = data_pair
         self.batch_size = batch_size
+        self.nb_classes = nb_classes
 
     def __len__(self):
-        return np.ceil(len(self.image_filenames) / float(self.batch_size))
+        return int(np.ceil(len(self.data_pair) / float(self.batch_size)))
 
     def __getitem__(self, idx):
-        batch_x = self.image_filenames[idx * self.batch_size:(idx + 1) * self.batch_size]
-        batch_y = self.labels[idx * self.batch_size:(idx + 1) + self.batch_size]
+        pairs = self.data_pair[idx * self.batch_size:(idx + 1) * self.batch_size]
 
-        return np.array([preprocess_input(imread(file_name)) for file_name in batch_x]), np.array(batch_y)
+        batch_input = []
+        batch_output = []
+        for p in pairs:
+            img_path = p[0]
+            img = cv2.cvtColor(imread(img_path), cv2.COLOR_BGRA2BGR)
+            img = preprocess_input(img)
+
+            y = np_utils.to_categorical(int(p[1]), self.nb_classes)
+
+            batch_input += [img]
+            batch_output += [y]
+
+        batch_x = np.array(batch_input)
+        batch_y = np.array(batch_output)
+
+        return batch_x, batch_y

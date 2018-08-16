@@ -1,14 +1,12 @@
-import csv
-
 import numpy as np
+from DataGenerator import DataGenerator
 from keras.layers import Dense
 from keras.models import Model
-from keras.preprocessing.image import ImageDataGenerator
 from keras.applications.resnet50 import ResNet50, preprocess_input
 from keras.callbacks import ReduceLROnPlateau, EarlyStopping, TensorBoard
-from utils import extract_frames, read_data, read_labels, data_generator_from_labels, read_from_file, data_generator_test
+from utils import extract_frames, read_data, read_labels, data_generator_from_labels, read_from_file
 
-model_name = 'baseline_1'
+model_name = 'baseline_2_ordered_sequence'
 
 lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0, patience=8, min_lr=0.5e-6, mode='auto')
 early_stopper = EarlyStopping(monitor='val_loss', min_delta=1e-6, patience=10)
@@ -79,8 +77,15 @@ vali_pair = read_from_file(remote_vali_pair)
 
 # testx, testy = data_generator_test(train_pair, nb_classes, batch_size)
 
-train_generator = data_generator_from_labels(train_pair, nb_classes, batch_size)
-vali_generator = data_generator_from_labels(vali_pair, nb_classes, batch_size)
+# unordered data generator
+# train_idx = np.array(len(train_pair))
+# vali_idx = np.array(len(vali_pair))
+# train_generator = data_generator_from_labels(train_pair, train_idx, nb_classes, batch_size)
+# vali_generator = data_generator_from_labels(vali_pair, vali_idx, nb_classes, batch_size)
+
+# ordered data generator
+train_generator = DataGenerator(train_pair, nb_classes, batch_size)
+vali_generator = DataGenerator(vali_pair, nb_classes, batch_size)
 
 # X_train, Y_train = read_data(local_path, fps, 1, 41, 'train')
 # X_vali, Y_vali = read_data(local_path, fps, 42, 51, 'vali')
@@ -105,8 +110,9 @@ fine_tuned_model.compile(loss='categorical_crossentropy',
                          metrics=['accuracy'])
 fine_tuned_model.summary()
 
+
 # create custom generator
-fine_tuned_model.fit_generator(train_generator,
+fine_tuned_model.fit_generator(generator=train_generator,
                                steps_per_epoch=(n_train // batch_size),
                                epochs=nb_epoch,
                                validation_data=vali_generator,

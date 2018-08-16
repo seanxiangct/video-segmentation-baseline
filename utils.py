@@ -161,46 +161,18 @@ def read_from_file(path):
     return pair
 
 
-def data_generator_test(pair, nb_classes, batch_size=32):
+def data_generator_from_labels(pair, idx, nb_classes, batch_size=32):
     while 1:
-        idx = np.array(len(pair))
         rand_indx = np.random.choice(a=idx, size=batch_size, replace=False)
 
         batch_input = []
         batch_output = []
         for i in rand_indx:
             img_path = pair[i][0]
-            img = imread(img_path)
-            img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+            img = cv2.cvtColor(imread(img_path), cv2.COLOR_BGRA2BGR)
             img = preprocess_input(img)
 
-            y = pair[i][1]
-            y = np_utils.to_categorical(int(y), nb_classes)
-
-            batch_input += [img]
-            batch_output += [y]
-
-        batch_x = np.array(batch_input)
-        batch_y = np.array(batch_output)
-
-        return batch_x, batch_y
-
-
-def data_generator_from_labels(pair, nb_classes, batch_size=32):
-    while 1:
-        idx = np.array(len(pair))
-        rand_indx = np.random.choice(a=idx, size=batch_size, replace=False)
-
-        batch_input = []
-        batch_output = []
-        for i in rand_indx:
-            img_path = pair[i][0]
-            img = imread(img_path)
-            img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-            img = preprocess_input(img)
-
-            y = pair[i][1]
-            y = np_utils.to_categorical(int(y), nb_classes)
+            y = np_utils.to_categorical(int(pair[i][1]), nb_classes)
 
             batch_input += [img]
             batch_output += [y]
