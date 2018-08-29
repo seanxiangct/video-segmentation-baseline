@@ -1,10 +1,11 @@
 from keras import Model, Input
 from keras.callbacks import ReduceLROnPlateau, EarlyStopping, TensorBoard
-from keras.models import Sequential, load_model
+from keras.models import load_model
 import numpy as np
-from keras.layers import Bidirectional, LSTM, TimeDistributed, Dense, Flatten
+from keras.layers import TimeDistributed, Dense, Convolution1D, SpatialDropout1D, \
+    Activation, Lambda, MaxPooling1D, UpSampling1D, Flatten
 from DataGenerator import DataGenerator
-from utils import read_from_file
+from utils import read_from_file, channel_normalization
 
 remote_train_pair = '/home/cxia8134/data/train_labels/labels.txt'
 remote_vali_pair = '/home/cxia8134/data/vali_labels/labels.txt'
@@ -12,9 +13,9 @@ remote_vali_pair = '/home/cxia8134/data/vali_labels/labels.txt'
 remote_model_path = '/home/cxia8134/dev/baseline/trained/baseline_1.h5'
 local_model_path = '/Users/seanxiang/data/trained/baseline_1.h5'
 
-model_name = 'CNN-BiLSTM-1'
+model_name = 'CNN-TCN-1'
 
-lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0, patience=8, min_lr=0.5e-6, mode='auto')
+lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0, patience=5, min_lr=0.5e-6, mode='auto')
 early_stopper = EarlyStopping(monitor='val_loss', min_delta=1e-6, patience=10)
 tensor_board = TensorBoard('log/' + model_name)
 
@@ -22,37 +23,54 @@ input_height, input_width = 224, 224
 input_channels = 3
 
 seq_length = 20
-n_nodes = 200
+n_nodes = [200, 100]
 nb_epoch = 200
 timesteps = 8
 nb_classes = 7
 batch_size = 32
 n_train = 86344
 n_vali = 21108
-
-# Expected input batch shape: (batch_size, timesteps, data_dim)
-# Note that we have to provide the full batch_input_shape since the network is stateful.
-# the sample of index i in batch k is the follow-up for the sample i in batch k-1.
-
-pretrained = load_model(remote_model_path)
-# remote the last prediction layer
-pretrained.layers.pop()
+conv_len = 30
+n_feat = 2048
 
 # flatten the maxpooled feature tensors into feature vectors
-# flattened = Flatten()(pretrained.layers[-1])
-n_feats = pretrained.output_shape
 
-# bidirectional lstm
-bidirectional = Bidirectional(LSTM(n_nodes,
-                                   return_sequences=True,
-                                   input_shape=(None, seq_length, n_feats),
-                                   dropout=0.5,
-                                   recurrent_dropout=0.25))(pretrained)
-bidirectional = TimeDistributed(Dense(nb_classes, activation='softmax'))(bidirectional)
+# ED-CNN
+n_layers = len(n_nodes)
 
-model = Model(input=pretrained.layers[0], outputs=bidirectional)
-model.compile(optimizer='adam', loss='categorical_crossentropy',
-              sample_weight_mode="temporal", metrics=['accuracy'])
+inputs = Input(shape=(None, n_feat))
+model = inputs
+
+# ---- Encoder ----
+for i in range(n_layers):
+    # Pad beginning of sequence to prevent usage of future data
+    model = Convolution1D(n_nodes[i], conv_len, border_mode='same')(model)
+
+    model = SpatialDropout1D(0.3)(model)
+
+    model = Activation('relu')(model)
+    model = Lambda(channel_normalization, name="encoder_norm_{}".format(i))(model)
+
+    model = MaxPooling1D(2)(model)
+
+# ---- Decoder ----
+for i in range(n_layers):
+    model = UpSampling1D(2)(model)
+    model = Convolution1D(n_nodes[-i - 1], conv_len, border_mode='same')(model)
+
+    model = SpatialDropout1D(0.3)(model)
+
+    model = Activation('relu')(model)
+    model = Lambda(channel_normalization, name="decoder_norm_{}".format(i))(model)
+
+# Output FC layer
+model = TimeDistributed(Dense(nb_classes, activation="softmax"))(model)
+
+model = Model(input=inputs, outputs=model)
+model.compile(loss='categorical_crossentropy',
+              optimizer='adam',
+              sample_weight_mode="temporal",
+              metrics=['accuracy'])
 model.summary()
 
 train_pair = read_from_file(remote_train_pair)
@@ -67,7 +85,7 @@ model.fit_generator(generator=train_generator,
                     validation_steps=(n_vali // batch_size),
                     verbose=1,
                     use_multiprocessing=True,
-                    workers=8,
+                    workers=6,
                     max_queue_size=32,
                     callbacks=[lr_reducer, early_stopper, tensor_board])
 

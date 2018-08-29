@@ -9,7 +9,7 @@ from skvideo.io import vreader
 from skimage.transform import resize
 from skimage.io import imread_collection, imread
 from keras.applications.resnet50 import preprocess_input
-from keras.preprocessing.image import load_img
+from keras import backend as K
 
 phase_mapping = {
     'Preparation': 0,
@@ -115,11 +115,20 @@ def read_data(path, fps, start, end, source):
 
 
 def read_labels_to_file(path, fps, start, end, source):
+    """
+    Givne start and end index of videos, save (frame path, label) pairs into file
+    :param path:
+    :param fps:
+    :param start:
+    :param end:
+    :param source:
+    :return:
+    """
     data_path = '{}frames/'.format(path, source)
     for n in range(start, end):
         video_id = str(n).zfill(2)
         label_path = '{}phase_annotations/video{}-phase.txt'.format(path, video_id)
-        dest_path = '{}{}_labels/labels.txt'.format(path, source)
+        dest_path = '{}{}_labels/{}-{}.txt'.format(path, source, start, end)
         with open(dest_path, 'a') as new_f:
             writer = csv.writer(new_f, delimiter='\t')
             with open(label_path) as f:
@@ -170,7 +179,7 @@ def data_generator_from_labels(pair, idx, nb_classes, batch_size=32):
         for i in rand_indx:
             img_path = pair[i][0]
             img = cv2.cvtColor(imread(img_path), cv2.COLOR_BGRA2BGR)
-            img = preprocess_input(img)
+            img = preprocess_input(img, mode='tf')
 
             y = np_utils.to_categorical(int(pair[i][1]), nb_classes)
 
@@ -181,3 +190,83 @@ def data_generator_from_labels(pair, idx, nb_classes, batch_size=32):
         batch_y = np.array(batch_output)
 
         yield (batch_x, batch_y)
+
+
+def channel_normalization(x):
+    # Normalize by the highest activation
+    max_values = K.max(K.abs(x), 2, keepdims=True) + 1e-5
+    out = x / max_values
+    return out
+
+
+def shuffle(train, label):
+    """
+    shuffle the training data and labels together
+    """
+    idx = np.random.permutation(train.shape[0])
+    return train[idx], label[idx]
+
+
+def plot_confusion_matrix(cm, classes,
+                          normalize=False,
+                          title='Confusion matrix',
+                          cmap=plt.cm.Blues):
+    """
+    This function prints and plots the confusion matrix.
+    Normalization can be applied by setting `normalize=True`.
+    """
+
+    plt.rcParams.update({'font.size': 3})
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+    #     print("Normalized confusion matrix")
+    # else:
+    #     print('Confusion matrix, without normalization')
+
+    # print(cm)
+
+    plt.imshow(cm, interpolation='none', cmap=cmap)
+    plt.title(title)
+    plt.colorbar()
+    tick_marks = np.arange(len(classes))
+    plt.xticks(tick_marks, classes, fontsize=3)
+    plt.yticks(tick_marks, classes, fontsize=3)
+
+    # fmt = '.2f' if normalize else 'd'
+    # thresh = cm.max() / 2.
+    # for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+    #     plt.text(j, i, format(cm[i, j], fmt),
+    #              horizontalalignment="center",
+    #              color="white" if cm[i, j] > thresh else "black")
+
+    plt.tight_layout()
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
+
+
+def read_from_pair(pairs, nb_classes):
+    data = []
+    labels = []
+    for pair in pairs:
+        print(pair)
+        img = cv2.cvtColor(imread(pair[0]), cv2.COLOR_BGRA2BGR)
+        img = preprocess_input(img, mode='tf')
+        data.append(img)
+
+        labels.append(pair[1])
+
+    labels = np_utils.to_categorical(labels, nb_classes)
+    return np.array(data), np.array(labels)
+
+
+def read_test_data(path):
+    ic = imread_collection(path + '*.png')
+    data = []
+    for image in ic:
+        img = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
+        img = preprocess_input(img)
+
+        data.append(img)
+    data = np.asarray(data)
+
+    return data

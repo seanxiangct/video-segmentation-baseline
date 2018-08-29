@@ -6,5 +6,8 @@ remote_path = '/home/cxia8134/data/'
 
 fps = 25
 
-read_labels_to_file(remote_path, fps, 1, 41, 'train')
-read_labels_to_file(remote_path, fps, 41, 51, 'vali')
+# read_labels_to_file(remote_path, fps, 1, 41, 'train')
+# read_labels_to_file(remote_path, fps, 41, 51, 'vali')
+
+for i in range(51, 61):
+    read_labels_to_file(local_path, fps, i, i+1, 'test')

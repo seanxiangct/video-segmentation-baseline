@@ -29,7 +29,7 @@ class DataGenerator(Sequence):
         for p in pairs:
             img_path = p[0]
             img = cv2.cvtColor(imread(img_path), cv2.COLOR_BGRA2BGR)
-            img = preprocess_input(img)
+            img = preprocess_input(img, mode='tf')
 
             y = np_utils.to_categorical(int(p[1]), self.nb_classes)
 
