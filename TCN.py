@@ -1,123 +1,230 @@
-from keras import Model, Input
-from keras.callbacks import ReduceLROnPlateau, EarlyStopping, TensorBoard
-from keras.models import load_model
-import numpy as np
-from keras.layers import TimeDistributed, Dense, Convolution1D, SpatialDropout1D, \
-    Activation, Lambda, MaxPooling1D, UpSampling1D, Flatten
-from DataGenerator import DataGenerator
-from utils import read_from_file, channel_normalization
+from keras import backend as K
+from keras import Input, Model
+from keras.layers import ZeroPadding1D, Conv1D, Cropping1D, SpatialDropout1D, Activation, Lambda, MaxPooling1D, \
+    TimeDistributed, Dense, UpSampling1D, multiply, LSTM, add, Bidirectional, BatchNormalization
 
-remote_train_pair = '/home/cxia8134/data/train_labels/labels.txt'
-remote_vali_pair = '/home/cxia8134/data/vali_labels/labels.txt'
 
-remote_model_path = '/home/cxia8134/dev/baseline/trained/baseline_1.h5'
-local_model_path = '/Users/seanxiang/data/trained/baseline_1.h5'
+def channel_normalization(x):
+    # Normalize by the highest activation
+    max_values = K.max(K.abs(x), 2, keepdims=True) + 1e-5
+    out = x / max_values
+    return out
 
-model_name = 'CNN-TCN-1'
 
-lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0, patience=5, min_lr=0.5e-6, mode='auto')
-early_stopper = EarlyStopping(monitor='val_loss', min_delta=1e-6, patience=10)
-tensor_board = TensorBoard('log/' + model_name)
+def WaveNet_activation(x):
+    tanh_out = Activation('tanh')(x)
+    sigm_out = Activation('sigmoid')(x)
+    return multiply([tanh_out, sigm_out])
 
-input_height, input_width = 224, 224
-input_channels = 3
 
-seq_length = 20
-n_nodes = [200, 100]
-nb_epoch = 200
-timesteps = 8
-nb_classes = 7
-batch_size = 32
-n_train = 86344
-n_vali = 21108
-conv_len = 30
-n_feat = 2048
+def ED_TCN(n_nodes, conv_len, n_classes, n_feat, max_len,
+           loss='categorical_crossentropy', online=False,
+           optimizer="rmsprop", activation='norm_relu',
+           return_param_str=False):
+    n_layers = len(n_nodes)
 
-# flatten the maxpooled feature tensors into feature vectors
+    inputs = Input(shape=(max_len, n_feat))
+    model = inputs
 
-# ED-CNN
-n_layers = len(n_nodes)
+    # ---- Encoder ----
+    for i in range(n_layers):
+        # Pad beginning of sequence to prevent usage of future data
+        if online: model = ZeroPadding1D((conv_len // 2, 0))(model)
+        # convolution over the temporal dimension
+        model = Conv1D(n_nodes[i], conv_len, padding='same')(model)
+        if online: model = Cropping1D((0, conv_len // 2))(model)
 
-inputs = Input(shape=(None, n_feat))
-model = inputs
+        model = SpatialDropout1D(0.3)(model)
 
-# ---- Encoder ----
-for i in range(n_layers):
-    # Pad beginning of sequence to prevent usage of future data
-    model = Convolution1D(n_nodes[i], conv_len, border_mode='same')(model)
+        if activation == 'norm_relu':
+            model = Activation('relu')(model)
+            model = Lambda(channel_normalization, name="encoder_norm_{}".format(i))(model)
+        elif activation == 'wavenet':
+            model = WaveNet_activation(model)
+        else:
+            model = Activation(activation)(model)
 
-    model = SpatialDropout1D(0.3)(model)
+        # hidden features layer when in the last interation
+        model = MaxPooling1D(2)(model)
 
-    model = Activation('relu')(model)
-    model = Lambda(channel_normalization, name="encoder_norm_{}".format(i))(model)
+    # ---- Decoder ----
+    for i in range(n_layers):
+        model = UpSampling1D(2)(model)
+        if online: model = ZeroPadding1D((conv_len // 2, 0))(model)
+        model = Conv1D(n_nodes[-i - 1], conv_len, padding='same')(model)
+        if online: model = Cropping1D((0, conv_len // 2))(model)
 
-    model = MaxPooling1D(2)(model)
+        model = SpatialDropout1D(0.3)(model)
 
-# ---- Decoder ----
-for i in range(n_layers):
-    model = UpSampling1D(2)(model)
-    model = Convolution1D(n_nodes[-i - 1], conv_len, border_mode='same')(model)
+        if activation == 'norm_relu':
+            model = Activation('relu')(model)
+            model = Lambda(channel_normalization, name="decoder_norm_{}".format(i))(model)
+        elif activation == 'wavenet':
+            model = WaveNet_activation(model)
+        else:
+            model = Activation(activation)(model)
 
-    model = SpatialDropout1D(0.3)(model)
+    # Output FC layer
+    model = TimeDistributed(Dense(n_classes, activation="softmax"))(model)
 
-    model = Activation('relu')(model)
-    model = Lambda(channel_normalization, name="decoder_norm_{}".format(i))(model)
+    model = Model(inputs=inputs, outputs=model)
+    model.compile(loss=loss,
+                  optimizer=optimizer,
+                  sample_weight_mode="temporal",
+                  metrics=['accuracy'])
+    model.summary()
 
-# Output FC layer
-model = TimeDistributed(Dense(nb_classes, activation="softmax"))(model)
+    if return_param_str:
+        param_str = "ED-TCN_C{}_L{}".format(conv_len, n_layers)
+        if online:
+            param_str += "_online"
 
-model = Model(input=inputs, outputs=model)
-model.compile(loss='categorical_crossentropy',
-              optimizer='adam',
-              sample_weight_mode="temporal",
-              metrics=['accuracy'])
-model.summary()
+        return model, param_str
+    else:
+        return model
 
-train_pair = read_from_file(remote_train_pair)
-vali_pair = read_from_file(remote_vali_pair)
-train_generator = DataGenerator(train_pair, nb_classes, batch_size)
-vali_generator = DataGenerator(vali_pair, nb_classes, batch_size)
 
-model.fit_generator(generator=train_generator,
-                    steps_per_epoch=(n_train // batch_size),
-                    epochs=nb_epoch,
-                    validation_data=vali_generator,
-                    validation_steps=(n_vali // batch_size),
-                    verbose=1,
-                    use_multiprocessing=True,
-                    workers=6,
-                    max_queue_size=32,
-                    callbacks=[lr_reducer, early_stopper, tensor_board])
+def TCN_LSTM(n_nodes, conv_len, n_classes, n_feat, max_len,
+             loss='categorical_crossentropy', online=False,
+             optimizer="rmsprop", activation='norm_relu',
+             return_param_str=False):
+    n_layers = len(n_nodes)
 
-model.save('trained/' + model_name + '.h5')
+    inputs = Input(shape=(max_len, n_feat))
+    model = inputs
 
-# return sequence:
-# true: return output for every node
-# false: only return output for the last node
+    # ---- Encoder ----
+    for i in range(n_layers):
+        # Pad beginning of sequence to prevent usage of future data
+        if online: model = ZeroPadding1D((conv_len // 2, 0))(model)
+        # convolution over the temporal dimension
+        model = Conv1D(n_nodes[i], conv_len, padding='same')(model)
+        if online: model = Cropping1D((0, conv_len // 2))(model)
 
-# input shape of LSTM: (sequence length, time steps, input features)
-# batch_size: size of the batches during training
-# time steps: number of previous inputs being referenced (setting to None to accept variable length input)
-# input features: inputs feature length
-# model.add(LSTM(32, return_sequences=True, stateful=True,
-#                batch_input_shape=(batch_size, timesteps, data_dim)))
-# model.add(LSTM(32, return_sequences=True, stateful=True))
-# model.add(LSTM(32, stateful=True))
-# model.add(Dense(10, activation='softmax'))
-#
-# model.compile(loss='categorical_crossentropy',
-#               optimizer='rmsprop',
-#               metrics=['accuracy'])
-# model.summary()
-#
-# # Generate dummy training data
-# x_train = np.random.random((batch_size * 10, timesteps, data_dim))
-# y_train = np.random.random((batch_size * 10, num_classes))
-#
-# # Generate dummy validation data
-# x_val = np.random.random((batch_size * 3, timesteps, data_dim))
-# y_val = np.random.random((batch_size * 3, num_classes))
-#
-# model.fit(x_train, y_train,
-#           batch_size=batch_size, epochs=5, shuffle=False,
-#           validation_data=(x_val, y_val))
+        model = SpatialDropout1D(0.3)(model)
+
+        if activation == 'norm_relu':
+            model = Activation('relu')(model)
+            model = Lambda(channel_normalization, name="encoder_norm_{}".format(i))(model)
+        elif activation == 'wavenet':
+            model = WaveNet_activation(model)
+        else:
+            model = Activation(activation)(model)
+
+        # hidden features layer when in the last interation
+        model = MaxPooling1D(2)(model)
+
+    # ---- Decoder ----
+    for i in range(n_layers):
+        model = UpSampling1D(2)(model)
+        if online: model = ZeroPadding1D((conv_len // 2, 0))(model)
+        model = Bidirectional(LSTM(n_nodes[-i - 1], dropout=0.3, return_sequences=True))(model)
+        if online: model = Cropping1D((0, conv_len // 2))(model)
+
+        # model = SpatialDropout1D(0.3)(model)
+
+        if activation == 'norm_relu':
+            model = Activation('relu')(model)
+            model = Lambda(channel_normalization, name="decoder_norm_{}".format(i))(model)
+        elif activation == 'wavenet':
+            model = WaveNet_activation(model)
+        else:
+            model = Activation(activation)(model)
+
+    # Output FC layer
+    model = TimeDistributed(Dense(n_classes, activation="softmax"))(model)
+
+    model = Model(inputs=inputs, outputs=model)
+    model.compile(loss=loss,
+                  optimizer=optimizer,
+                  sample_weight_mode="temporal",
+                  metrics=['accuracy'])
+    model.summary()
+
+    if return_param_str:
+        param_str = "ED-TCN_C{}_L{}".format(conv_len, n_layers)
+        if online:
+            param_str += "_online"
+
+        return model, param_str
+    else:
+        return model
+
+
+def encoder_identify_block(input_tensor, n_nodes, conv_len, activation='norm_relu'):
+    x = Conv1D(n_nodes, conv_len, padding='same')(input_tensor)
+    x = BatchNormalization(axis=3)(x)
+
+    x = SpatialDropout1D(0.3)(x)
+    # residual shortcut
+    x = add([x, input_tensor])
+
+    x = MaxPooling1D(2)(x)
+
+    return x
+
+
+def decoder_identify_block(input_tensor, n_nodes, activation='norm_relu'):
+    x = LSTM(n_nodes, dropout=0.3, return_sequences=True)(input_tensor)
+
+    # residual shortcut
+    x = add([x, input_tensor])
+
+    x = SpatialDropout1D(0.3)(x)
+
+    if activation == 'norm_relu':
+        x = Activation('relu')(x)
+        x = Lambda(channel_normalization)(x)
+    elif activation == 'wavenet':
+        x = WaveNet_activation(x)
+    else:
+        x = Activation(activation)(x)
+
+    # x = UpSampling1D(2)(x)
+
+    return x
+
+
+def residual_TCN_LSTM(n_nodes, conv_len, n_classes, n_feat, max_len,
+                      loss='categorical_crossentropy', online=False,
+                      optimizer="rmsprop", activation='norm_relu',
+                      return_param_str=False):
+    n_layers = len(n_nodes)
+
+    inputs = Input(shape=(max_len, n_feat))
+    model = inputs
+
+    # encoder
+    for i in range(n_layers):
+        # Pad beginning of sequence to prevent usage of future data
+        if online: model = ZeroPadding1D((conv_len // 2, 0))(model)
+        # convolution over the temporal dimension
+        model = encoder_identify_block(model, n_nodes[i], conv_len, activation='norm_relu')
+        if online: model = Cropping1D((0, conv_len // 2))(model)
+
+    # decoder
+    for i in range(n_layers):
+        # Pad beginning of sequence to prevent usage of future data
+        if online: model = ZeroPadding1D((conv_len // 2, 0))(model)
+        # convolution over the temporal dimension
+        model = decoder_identify_block(model, n_nodes[-i - 1], activation='norm_relu')
+        if online: model = Cropping1D((0, conv_len // 2))(model)
+
+    # Output FC layer
+    model = TimeDistributed(Dense(n_classes, activation="softmax"))(model)
+
+    model = Model(inputs=inputs, outputs=model)
+    model.compile(loss=loss,
+                  optimizer=optimizer,
+                  sample_weight_mode="temporal",
+                  metrics=['accuracy'])
+    model.summary()
+
+    if return_param_str:
+        param_str = "ED-TCN_C{}_L{}".format(conv_len, n_layers)
+        if online:
+            param_str += "_online"
+
+        return model, param_str
+    else:
+        return model

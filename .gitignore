@@ -3,3 +3,5 @@ __pycache__/
 .resnet.py.swp
 log/
 .DS_Store
+feats/
+features/

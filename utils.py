@@ -1,3 +1,5 @@
+import h5py
+
 import numpy as np
 import csv
 import matplotlib.pyplot as plt
@@ -9,7 +11,6 @@ from skvideo.io import vreader
 from skimage.transform import resize
 from skimage.io import imread_collection, imread
 from keras.applications.resnet50 import preprocess_input
-from keras import backend as K
 
 phase_mapping = {
     'Preparation': 0,
@@ -124,7 +125,7 @@ def read_labels_to_file(path, fps, start, end, source):
     :param source:
     :return:
     """
-    data_path = '{}frames/'.format(path, source)
+    data_path = '{}frames/'.format(path)
     for n in range(start, end):
         video_id = str(n).zfill(2)
         label_path = '{}phase_annotations/video{}-phase.txt'.format(path, video_id)
@@ -192,13 +193,6 @@ def data_generator_from_labels(pair, idx, nb_classes, batch_size=32):
         yield (batch_x, batch_y)
 
 
-def channel_normalization(x):
-    # Normalize by the highest activation
-    max_values = K.max(K.abs(x), 2, keepdims=True) + 1e-5
-    out = x / max_values
-    return out
-
-
 def shuffle(train, label):
     """
     shuffle the training data and labels together
@@ -245,10 +239,15 @@ def plot_confusion_matrix(cm, classes,
 
 
 def read_from_pair(pairs, nb_classes):
+    """
+    read from x-x+1.txt file, load frames and one-hot-encode their labels
+    :param pairs:
+    :param nb_classes:
+    :return: preprocessed frames and one-hot-encoded labels
+    """
     data = []
     labels = []
     for pair in pairs:
-        print(pair)
         img = cv2.cvtColor(imread(pair[0]), cv2.COLOR_BGRA2BGR)
         img = preprocess_input(img, mode='tf')
         data.append(img)
@@ -259,14 +258,97 @@ def read_from_pair(pairs, nb_classes):
     return np.array(data), np.array(labels)
 
 
-def read_test_data(path):
-    ic = imread_collection(path + '*.png')
-    data = []
-    for image in ic:
-        img = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
-        img = preprocess_input(img)
+def read_features(path, source):
+    """
+    read features, labels and length from x-x+1.h5 feature files
+    :param path: path of the feats folder
+    :param source: subdirectory, could be train, vali or test
+    :return: features, one-hot-encoded labels, and video length
+    """
 
-        data.append(img)
-    data = np.asarray(data)
+    train = []
+    labels = []
+    feats_path = path + source
+    for i, f in enumerate(sorted(os.listdir(feats_path)), start=0):
+        h5f = h5py.File('{}/{}'.format(feats_path, f), 'r')
+        train.append(h5f['feats'][:])
+        labels.append(h5f['y'][:])
+        h5f.close()
+    return train, labels
 
-    return data
+
+def mask_data(X, Y, max_len=None, mask_value=0):
+    """Mask data and labels, padding is added to the end of the sequence"""
+    if max_len is None:
+        max_len = np.max([x.shape[0] for x in X])
+    X_ = np.zeros([len(X), max_len, X[0].shape[1]]) + mask_value
+    Y_ = np.zeros([len(X), max_len, Y[0].shape[1]]) + mask_value
+    mask = np.zeros([len(X), max_len])
+    for i in range(len(X)):
+        l = X[i].shape[0]
+        X_[i, :l] = X[i]
+        Y_[i, :l] = Y[i]
+        mask[i, :l] = 1
+    return X_, Y_, mask[:, :, None]
+
+
+def unmask(X, M):
+    if X[0].ndim == 1 or (X[0].shape[0] > X[0].shape[1]):
+        return [X[i][M[i].flatten() > 0] for i in range(len(X))]
+    else:
+        return [X[i][:, M[i].flatten() > 0] for i in range(len(X))]
+
+
+# ----------------- test functions ---------------
+
+def remap_labels(Y_all):
+    # Map arbitrary set of labels (e.g. {1,3,5}) to contiguous sequence (e.g. {0,1,2})
+    ys = np.unique([np.hstack([np.unique(Y_all[i]) for i in range(len(Y_all))])])
+    y_max = ys.max()
+    y_map = np.zeros(y_max + 1, np.int) - 1
+    for i, yi in enumerate(ys):
+        y_map[yi] = i
+    Y_all = [y_map[Y_all[i]] for i in range(len(Y_all))]
+    return Y_all
+
+
+def subsample(X, Y, rate=1, dim=0):
+    if dim == 0:
+        X_ = [x[::rate] for x in X]
+        Y_ = [y[::rate] for y in Y]
+    elif dim == 1:
+        X_ = [x[:, ::rate] for x in X]
+        Y_ = [y[::rate] for y in Y]
+    else:
+        print("Subsample not defined for dim={}".format(dim))
+        return None, None
+
+    return X_, Y_
+
+
+# ------------- Segment functions -------------
+def segment_labels(Yi):
+    idxs = [0] + (np.nonzero(np.diff(Yi))[0] + 1).tolist() + [len(Yi)]
+    Yi_split = np.array([Yi[idxs[i]] for i in range(len(idxs) - 1)])
+    return Yi_split
+
+
+def segment_data(Xi, Yi):
+    idxs = [0] + (np.nonzero(np.diff(Yi))[0] + 1).tolist() + [len(Yi)]
+    Xi_split = [np.squeeze(Xi[:, idxs[i]:idxs[i + 1]]) for i in range(len(idxs) - 1)]
+    Yi_split = np.array([Yi[idxs[i]] for i in range(len(idxs) - 1)])
+    return Xi_split, Yi_split
+
+
+def segment_intervals(Yi):
+    idxs = [0] + (np.nonzero(np.diff(Yi))[0] + 1).tolist() + [len(Yi)]
+    intervals = [(idxs[i], idxs[i + 1]) for i in range(len(idxs) - 1)]
+    return intervals
+
+
+def segment_lengths(Yi):
+    idxs = [0] + (np.nonzero(np.diff(Yi))[0] + 1).tolist() + [len(Yi)]
+    intervals = [(idxs[i + 1] - idxs[i]) for i in range(len(idxs) - 1)]
+    return np.array(intervals)
+
+####

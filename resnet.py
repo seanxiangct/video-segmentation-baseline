@@ -8,9 +8,9 @@ from utils import extract_frames, read_data, read_labels, data_generator_from_la
 
 if __name__ == '__main__':
 
-    model_name = 'baseline_3_ordered_sequence_tfmode'
+    model_name = 'baseline_4_unordered_tfmode'
 
-    lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0, patience=8, min_lr=0.5e-6, mode='auto')
+    lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0, patience=5, min_lr=0.5e-6, mode='auto')
     early_stopper = EarlyStopping(monitor='val_loss', min_delta=1e-6, patience=10)
     tensor_board = TensorBoard('log/' + model_name)
 
@@ -29,8 +29,8 @@ if __name__ == '__main__':
     remote_train_path = '/home/cxia8134/data/train_frames/'
     remote_vali_path = '/home/cxia8134/data/vali_frames/'
     remote_label_path = '/home/cxia8134/data/phase_annotations/'
-    remote_train_pair = '/home/cxia8134/data/train_labels/labels.txt'
-    remote_vali_pair = '/home/cxia8134/data/vali_labels/labels.txt'
+    remote_train_pair = '/home/cxia8134/data/old_labels/1-41.txt'
+    remote_vali_pair = '/home/cxia8134/data/old_labels/41-51.txt'
 
     train_folder = 'train_frames'
     vali_folder = 'vali_frames'
@@ -47,31 +47,6 @@ if __name__ == '__main__':
     n_train = 86344
     n_vali = 21108
 
-    # data_generator = ImageDataGenerator(validation_split=0.2,
-    #                                     preprocessing_function=preprocess_input)
-    # train_generator = data_generator.flow_from_directory(remote_train_path + 'train_frames',
-    #                                                      # shuffle=False,
-    #                                                      target_size=(224, 224),
-    #                                                      batch_size=batch_size)
-    # vali_generator = data_generator.flow_from_directory(remote_vali_path + 'vali_frames',
-    #                                                     target_size=(224, 224),
-    #                                                     batch_size=batch_size)
-
-    # X_train = read_data(remote_train_path)
-    # Y_train = read_labels(remote_label_path, fps, 1, 41)
-    #
-    # X_vali = read_data(remote_vali_path)
-    # Y_vali = read_labels(remote_label_path, fps, 42, 51)
-
-    # one-hot encoding
-    # Y_train = np_utils.to_categorical(Y_train, nb_classes)
-    # Y_vali = np_utils.to_categorical(Y_vali, nb_classes)
-
-    # preprocess data in the same way as imagenet
-    # X_train = preprocess_input(X_train, mode='tf')
-    # X_vali = preprocess_input(X_vali, mode='tf')
-
-
     # train_pair = read_from_file(local_train_pair)
     # vali_pair = read_from_file(local_vali_pair)
     train_pair = read_from_file(remote_train_pair)
@@ -80,14 +55,14 @@ if __name__ == '__main__':
     # testx, testy = data_generator_test(train_pair, nb_classes, batch_size)
 
     # unordered data generator
-    # train_idx = np.array(len(train_pair))
-    # vali_idx = np.array(len(vali_pair))
-    # train_generator = data_generator_from_labels(train_pair, train_idx, nb_classes, batch_size)
-    # vali_generator = data_generator_from_labels(vali_pair, vali_idx, nb_classes, batch_size)
+    train_idx = np.array(len(train_pair))
+    vali_idx = np.array(len(vali_pair))
+    train_generator = data_generator_from_labels(train_pair, train_idx, nb_classes, batch_size)
+    vali_generator = data_generator_from_labels(vali_pair, vali_idx, nb_classes, batch_size)
 
     # ordered data generator
-    train_generator = DataGenerator(train_pair, nb_classes, batch_size)
-    vali_generator = DataGenerator(vali_pair, nb_classes, batch_size)
+    # train_generator = DataGenerator(train_pair, nb_classes, batch_size)
+    # vali_generator = DataGenerator(vali_pair, nb_classes, batch_size)
 
     # X_train, Y_train = read_data(local_path, fps, 1, 41, 'train')
     # X_vali, Y_vali = read_data(local_path, fps, 42, 51, 'vali')
