@@ -3,8 +3,8 @@ from keras.callbacks import ReduceLROnPlateau, EarlyStopping, TensorBoard
 from keras.models import Sequential, load_model
 import numpy as np
 from keras.layers import Bidirectional, LSTM, TimeDistributed, Dense, Flatten
-from DataGenerator import DataGenerator
-from utils import read_from_file
+from utils.DataGenerator import DataGenerator
+from utils.utils import read_from_file
 
 remote_train_pair = '/home/cxia8134/data/train_labels/labels.txt'
 remote_vali_pair = '/home/cxia8134/data/vali_labels/labels.txt'

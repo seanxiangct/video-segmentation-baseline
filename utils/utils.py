@@ -351,4 +351,24 @@ def segment_lengths(Yi):
     intervals = [(idxs[i + 1] - idxs[i]) for i in range(len(idxs) - 1)]
     return np.array(intervals)
 
+
 ####
+# --------------------- plotting ---------------
+
+
+def phase_length(y):
+    phase_counter = []
+    counter = 0
+    current = y[0]
+    l = len(y)
+    for j in range(l):
+        if y[j] == current:
+            counter += 1
+        else:
+            phase_counter.append((counter, current[0]))
+            current = y[j]
+            counter = 0
+
+    phase_counter.append((counter, current[0]))
+
+    return phase_counter

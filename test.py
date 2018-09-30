@@ -4,11 +4,13 @@ from keras.callbacks import ReduceLROnPlateau, EarlyStopping, TensorBoard
 import numpy as np
 from keras.utils import np_utils
 
-import datasets
-import metrics
+import utils.datasets
+import utils.metrics
 import utils
 from TCN import TCN_LSTM, residual_TCN_LSTM
-from utils import read_from_file, read_features, mask_data
+from utils.utils import read_from_file, read_features, mask_data
+
+import seq2seq
 
 local_feats_path = '/Users/seanxiang/data/cholec80/feats/'
 
@@ -16,7 +18,7 @@ remote_feats_path = '/home/cxia8134/dev/baseline/feats/'
 remote_train_path = '/home/cxia8134/dev/baseline/feats/train'
 remote_vali_path = '/home/cxia8134/dev/baseline/feats/vali'
 
-model_name = 'test-EDBidirectional-5'
+model_name = 'test-attention-action-5'
 
 lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0, patience=5, min_lr=0.5e-6, mode='auto')
 early_stopper = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=10)
@@ -109,14 +111,24 @@ for i, split in enumerate(data.splits):
         X_test_m, Y_test_, M_test = utils.mask_data(X_test, Y_test, max_len, mask_value=-1)
 
         # ED-CNN
-        model = TCN_LSTM(n_nodes=n_nodes,
-                         conv_len=conv_len,
-                         n_classes=n_classes,
-                         n_feat=n_feat,
-                         max_len=max_len,
-                         online=False,
-                         activation='norm_relu',
-                         return_param_str=False)
+        # model = TCN_LSTM(n_nodes=n_nodes,
+        #                  conv_len=conv_len,
+        #                  n_classes=n_classes,
+        #                  n_feat=n_feat,
+        #                  max_len=max_len,
+        #                  online=False,
+        #                  activation='norm_relu',
+        #                  return_param_str=False)
+        model = seq2seq.AttentionSeq2Seq(input_dim=n_feat,
+                                         input_length=max_len,
+                                         hidden_dim=50,
+                                         output_dim=n_classes,
+                                         output_length=max_len,
+                                         depth=3)
+        model.compile(loss='categorical_crossentropy',
+                      optimizer='adam',
+                      sample_weight_mode="temporal",
+                      metrics=['accuracy'])
 
         # train with extracted features from each video
         model.fit(x=X_train_m,

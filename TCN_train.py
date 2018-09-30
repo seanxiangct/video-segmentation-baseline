@@ -1,7 +1,7 @@
 from keras.callbacks import ReduceLROnPlateau, EarlyStopping, TensorBoard
 import numpy as np
 from TCN import ED_TCN
-from utils import read_from_file, read_features, mask_data
+from utils.utils import read_from_file, read_features, mask_data
 
 remote_feats_path = '/home/cxia8134/dev/baseline/feats/'
 remote_train_path = '/home/cxia8134/dev/baseline/feats/train'

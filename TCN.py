@@ -1,7 +1,8 @@
 from keras import backend as K
 from keras import Input, Model
 from keras.layers import ZeroPadding1D, Conv1D, Cropping1D, SpatialDropout1D, Activation, Lambda, MaxPooling1D, \
-    TimeDistributed, Dense, UpSampling1D, multiply, LSTM, add, Bidirectional, BatchNormalization
+    TimeDistributed, Dense, UpSampling1D, multiply, LSTM, add, Bidirectional, BatchNormalization, GlobalAveragePooling1D, \
+    Embedding
 
 
 def channel_normalization(x):
@@ -86,7 +87,7 @@ def ED_TCN(n_nodes, conv_len, n_classes, n_feat, max_len,
 
 def TCN_LSTM(n_nodes, conv_len, n_classes, n_feat, max_len,
              loss='categorical_crossentropy', online=False,
-             optimizer="rmsprop", activation='norm_relu',
+             optimizer="adam", activation='norm_relu',
              return_param_str=False):
     n_layers = len(n_nodes)
 
@@ -118,10 +119,11 @@ def TCN_LSTM(n_nodes, conv_len, n_classes, n_feat, max_len,
     for i in range(n_layers):
         model = UpSampling1D(2)(model)
         if online: model = ZeroPadding1D((conv_len // 2, 0))(model)
-        model = Bidirectional(LSTM(n_nodes[-i - 1], dropout=0.3, return_sequences=True))(model)
+        model = Bidirectional(LSTM(n_nodes[-i-1],
+                                   dropout=0.25,
+                                   recurrent_dropout=0.25,
+                                   return_sequences=True))(model)
         if online: model = Cropping1D((0, conv_len // 2))(model)
-
-        # model = SpatialDropout1D(0.3)(model)
 
         if activation == 'norm_relu':
             model = Activation('relu')(model)
@@ -151,64 +153,54 @@ def TCN_LSTM(n_nodes, conv_len, n_classes, n_feat, max_len,
         return model
 
 
-def encoder_identify_block(input_tensor, n_nodes, conv_len, activation='norm_relu'):
+def encoder_identify_block(input_tensor, n_nodes, conv_len):
     x = Conv1D(n_nodes, conv_len, padding='same')(input_tensor)
-    x = BatchNormalization(axis=3)(x)
-
-    x = SpatialDropout1D(0.3)(x)
-    # residual shortcut
-    x = add([x, input_tensor])
-
-    x = MaxPooling1D(2)(x)
+    x = BatchNormalization(axis=-1)(x)
 
     return x
 
 
-def decoder_identify_block(input_tensor, n_nodes, activation='norm_relu'):
-    x = LSTM(n_nodes, dropout=0.3, return_sequences=True)(input_tensor)
-
-    # residual shortcut
-    x = add([x, input_tensor])
-
-    x = SpatialDropout1D(0.3)(x)
-
-    if activation == 'norm_relu':
-        x = Activation('relu')(x)
-        x = Lambda(channel_normalization)(x)
-    elif activation == 'wavenet':
-        x = WaveNet_activation(x)
-    else:
-        x = Activation(activation)(x)
-
-    # x = UpSampling1D(2)(x)
+def decoder_identify_block(input_tensor, n_nodes):
+    x = LSTM(n_nodes, dropout=0.25, recurrent_dropout=0.25,
+             return_sequences=True)(input_tensor)
 
     return x
 
 
 def residual_TCN_LSTM(n_nodes, conv_len, n_classes, n_feat, max_len,
                       loss='categorical_crossentropy', online=False,
-                      optimizer="rmsprop", activation='norm_relu',
+                      optimizer="rmsprop", depth=3,
                       return_param_str=False):
     n_layers = len(n_nodes)
 
     inputs = Input(shape=(max_len, n_feat))
     model = inputs
+    prev = Conv1D(n_nodes[0], conv_len, padding='same')(model)
 
     # encoder
     for i in range(n_layers):
-        # Pad beginning of sequence to prevent usage of future data
-        if online: model = ZeroPadding1D((conv_len // 2, 0))(model)
-        # convolution over the temporal dimension
-        model = encoder_identify_block(model, n_nodes[i], conv_len, activation='norm_relu')
-        if online: model = Cropping1D((0, conv_len // 2))(model)
+
+        for j in range(depth):
+            # convolution over the temporal dimension
+            current = encoder_identify_block(prev, n_nodes[i], conv_len)
+            # residual connection within residual block
+            if j != 0:
+                model = add([prev, current])
+                model = Activation('relu')(model)
+            prev = current
+
+        if i < (n_layers - 1):
+            model = MaxPooling1D(2)(model)
 
     # decoder
-    for i in range(n_layers):
-        # Pad beginning of sequence to prevent usage of future data
-        if online: model = ZeroPadding1D((conv_len // 2, 0))(model)
-        # convolution over the temporal dimension
-        model = decoder_identify_block(model, n_nodes[-i - 1], activation='norm_relu')
-        if online: model = Cropping1D((0, conv_len // 2))(model)
+    # for i in range(n_layers):
+    #
+    #     for j in range(depth):
+    #
+    #         current = decoder_identify_block(model, n_nodes[-i - 1])
+    #         model = add([prev, current])
+    #         prev = current
+    #     model = UpSampling1D(2)(model)
 
     # Output FC layer
     model = TimeDistributed(Dense(n_classes, activation="softmax"))(model)

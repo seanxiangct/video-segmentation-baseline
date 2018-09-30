@@ -3,8 +3,7 @@ import os
 from keras.models import load_model
 from keras import Model
 from fnmatch import fnmatch
-from utils import read_from_file, read_from_pair
-
+from utils.utils import read_from_file, read_from_pair
 
 def extract_features(model, path, source, batch_size=32, nb_classes=7):
     max_len = 0
@@ -47,7 +46,6 @@ if __name__ == '__main__':
 
     model = load_model(remote_model_path)
     features_model = Model(inputs=model.input, outputs=model.layers[-2].output)
-    # features_model.summary()
 
     extract_features(features_model, remote_train_path, 'train')
     extract_features(features_model, remote_vali_path, 'vali')

@@ -1,10 +1,10 @@
 import numpy as np
-from DataGenerator import DataGenerator
+from utils.DataGenerator import DataGenerator
 from keras.layers import Dense, Flatten
 from keras.models import Model
 from keras.applications.resnet50 import ResNet50, preprocess_input
 from keras.callbacks import ReduceLROnPlateau, EarlyStopping, TensorBoard
-from utils import extract_frames, read_data, read_labels, data_generator_from_labels, read_from_file
+from utils.utils import extract_frames, read_data, read_labels, data_generator_from_labels, read_from_file
 
 if __name__ == '__main__':
 
