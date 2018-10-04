@@ -5,12 +5,16 @@ from keras.utils import np_utils, Sequence
 from skimage.io import imread
 
 
-class FeatsDataGenerator(Sequence):
+class DataGenerator(Sequence):
+    """
+    Generating image path and its corresponding label for keras model
+    """
 
     def __init__(self, data_pair, nb_classes, batch_size=32):
         """
-        :param image_filenames: an array of image file names
-        :param labels: an array of corresponding labels
+
+        :param data_pair: data tuple (image path, label)
+        :param nb_classes: number of classes
         :param batch_size: size of the generated batch
         """
         self.data_pair = data_pair

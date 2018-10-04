@@ -3,7 +3,8 @@ import os
 from keras.models import load_model
 from keras import Model
 from fnmatch import fnmatch
-from utils.utils import read_from_file, read_from_pair
+from modules.utils import read_from_file, read_from_pair
+
 
 def extract_features(model, path, source, batch_size=32, nb_classes=7):
     max_len = 0

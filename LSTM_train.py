@@ -7,7 +7,7 @@ import seq2seq
 from seq2seq.models import SimpleSeq2Seq, Seq2Seq, AttentionSeq2Seq
 
 from TCN import ED_TCN
-from utils.utils import read_from_file, read_features, mask_data
+from modules.utils import read_from_file, read_features, mask_data
 
 remote_feats_path = '/home/cxia8134/dev/baseline/feats/'
 remote_train_path = '/home/cxia8134/dev/baseline/feats/train'

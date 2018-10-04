@@ -4,18 +4,21 @@ import matplotlib.pyplot as plt
 import resnet
 import csv
 import os
-from utils.metrics import ComputeMetrics
+from modules.metrics import ComputeMetrics
 from keras.models import load_model
 
-from utils.utils import read_features, mask_data, unmask
+from modules.utils import read_features, mask_data, unmask
 
 if __name__ == '__main__':
+    """
+    predict result with the given model name
+    """
 
     batch_size = 8
     max_len = 6000
     n_classes = 7
 
-    model_name = 'TCNLSTM-64,128,256nodes-8conv-2.h5'
+    model_name = 'TCNLSTM-64,128,256nodes-32conv-classWeights-3.h5'
     remote_feats_path = '/home/cxia8134/dev/baseline/feats/'
     remote_model_path = '/home/cxia8134/dev/baseline/trained/'
 

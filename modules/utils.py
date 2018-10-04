@@ -263,7 +263,7 @@ def read_features(path, source):
     read features, labels and length from x-x+1.h5 feature files
     :param path: path of the feats folder
     :param source: subdirectory, could be train, vali or test
-    :return: features, one-hot-encoded labels, and video length
+    :return: features, one-hot-encoded labels
     """
 
     train = []
@@ -366,9 +366,11 @@ def phase_length(y):
             counter += 1
         else:
             phase_counter.append((counter, current[0]))
+            # phase_counter.append((counter, current))
             current = y[j]
             counter = 0
 
     phase_counter.append((counter, current[0]))
+    # phase_counter.append((counter, current))
 
     return phase_counter

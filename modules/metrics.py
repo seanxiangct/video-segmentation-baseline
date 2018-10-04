@@ -2,10 +2,11 @@ import numpy as np
 import scipy
 from numba import jit, int64, boolean
 
-import utils
+import modules
 import sklearn.metrics as sm
 
 from functools import partial
+from modules.utils import segment_labels, segment_intervals
 
 from collections import OrderedDict
 
@@ -13,8 +14,8 @@ from collections import OrderedDict
 class ComputeMetrics:
     metric_types = ["accuracy", "edit_score", "overlap_f1"]
     metric_types += ["macro_accuracy", "acc_per_class"]
-    # metric_types += ["classification_accuracy"]
-    metric_types += ["precision", "recall"]
+    metric_types += ["classification_accuracy"]
+    # metric_types += ["precision", "recall"]
     # metric_types += ["mAP1", "mAP5", "midpoint"]
     trials = []
 
@@ -125,8 +126,8 @@ def classification_accuracy(P, Y, bg_class=None, **kwargs):
         sums = 0.
         n_segs = 0.
 
-        S_true = utils.segment_labels(y)
-        I_true = np.array(utils.segment_intervals(y))
+        S_true = segment_labels(y)
+        I_true = np.array(segment_intervals(y))
 
         for i in range(len(S_true)):
             if S_true[i] == bg_class:
@@ -180,8 +181,8 @@ def edit_score(P, Y, norm=True, bg_class=None, **kwargs):
         tmp = [edit_score(P[i], Y[i], norm, bg_class) for i in range(len(P))]
         return np.mean(tmp)
     else:
-        P_ = utils.segment_labels(P)
-        Y_ = utils.segment_labels(Y)
+        P_ = segment_labels(P)
+        Y_ = segment_labels(Y)
         if bg_class is not None:
             P_ = [c for c in P_ if c != bg_class]
             Y_ = [c for c in Y_ if c != bg_class]
@@ -191,10 +192,10 @@ def edit_score(P, Y, norm=True, bg_class=None, **kwargs):
 def overlap_f1(P, Y, n_classes=0, bg_class=None, overlap=.1, **kwargs):
     def overlap_(p, y, n_classes, bg_class, overlap):
 
-        true_intervals = np.array(utils.segment_intervals(y))
-        true_labels = utils.segment_labels(y)
-        pred_intervals = np.array(utils.segment_intervals(p))
-        pred_labels = utils.segment_labels(p)
+        true_intervals = np.array(segment_intervals(y))
+        true_labels = segment_labels(y)
+        pred_intervals = np.array(segment_intervals(p))
+        pred_labels = segment_labels(p)
 
         # Remove background labels
         if bg_class is not None:
@@ -258,10 +259,10 @@ def overlap_score(P, Y, bg_class=None, **kwargs):
     # ICRA 2016
 
     def overlap_(p, y, bg_class):
-        true_intervals = np.array(utils.segment_intervals(y))
-        true_labels = utils.segment_labels(y)
-        pred_intervals = np.array(utils.segment_intervals(p))
-        pred_labels = utils.segment_labels(p)
+        true_intervals = np.array(segment_intervals(y))
+        true_labels = segment_labels(y)
+        pred_intervals = np.array(segment_intervals(p))
+        pred_labels = segment_labels(p)
 
         if bg_class is not None:
             true_intervals = np.array([t for t, l in zip(true_intervals, true_labels) if l != bg_class])
@@ -329,7 +330,6 @@ def midpoint_criterion(gt_inter, det_inter):
         ov[i] = (midpoints >= gt_inter[i][0]) * (midpoints < gt_inter[i][1])
 
     return ov
-
 
 # Recreated from the THUMOS2014 code for computing mAP@k
 def TH14eventdetpr(gt_files, det_files,

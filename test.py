@@ -4,11 +4,11 @@ from keras.callbacks import ReduceLROnPlateau, EarlyStopping, TensorBoard
 import numpy as np
 from keras.utils import np_utils
 
-import utils.datasets
-import utils.metrics
-import utils
+import modules.datasets
+import modules.metrics
+import modules
 from TCN import TCN_LSTM, residual_TCN_LSTM
-from utils.utils import read_from_file, read_features, mask_data
+from modules.utils import read_from_file, read_features, mask_data
 
 import seq2seq
 
@@ -97,8 +97,8 @@ for i, split in enumerate(data.splits):
         n_feat = data.n_features
         print("# Feat:", n_feat)
 
-        Y_train = [np_utils.to_categorical(y, n_classes) for y in y_train]
-        Y_test = [np_utils.to_categorical(y, n_classes) for y in y_test]
+        Y_train = [np_modules.to_categorical(y, n_classes) for y in y_train]
+        Y_test = [np_modules.to_categorical(y, n_classes) for y in y_test]
 
         # In order process batches simultaneously all data needs to be of the same length
         # So make all same length and mask out the ends of each.
@@ -107,8 +107,8 @@ for i, split in enumerate(data.splits):
         max_len = int(np.ceil(max_len / (2 ** n_layers))) * 2 ** n_layers
         print("Max length:", max_len)
 
-        X_train_m, Y_train_, M_train = utils.mask_data(X_train, Y_train, max_len, mask_value=-1)
-        X_test_m, Y_test_, M_test = utils.mask_data(X_test, Y_test, max_len, mask_value=-1)
+        X_train_m, Y_train_, M_train = modules.mask_data(X_train, Y_train, max_len, mask_value=-1)
+        X_test_m, Y_test_, M_test = modules.mask_data(X_test, Y_test, max_len, mask_value=-1)
 
         # ED-CNN
         # model = TCN_LSTM(n_nodes=n_nodes,
@@ -143,8 +143,8 @@ for i, split in enumerate(data.splits):
 
         AP_train = model.predict(X_train_m, verbose=0)
         AP_test = model.predict(X_test_m, verbose=0)
-        AP_train = utils.unmask(AP_train, M_train)
-        AP_test = utils.unmask(AP_test, M_test)
+        AP_train = modules.unmask(AP_train, M_train)
+        AP_test = modules.unmask(AP_test, M_test)
 
         P_train = [p.argmax(1) for p in AP_train]
         P_test = [p.argmax(1) for p in AP_test]

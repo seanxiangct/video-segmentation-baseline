@@ -1,12 +1,15 @@
 import numpy as np
-from utils.DataGenerator import DataGenerator
+from modules.DataGenerator import DataGenerator
 from keras.layers import Dense, Flatten
 from keras.models import Model
 from keras.applications.resnet50 import ResNet50, preprocess_input
 from keras.callbacks import ReduceLROnPlateau, EarlyStopping, TensorBoard
-from utils.utils import extract_frames, read_data, read_labels, data_generator_from_labels, read_from_file
+from modules.utils import extract_frames, read_data, read_labels, data_generator_from_labels, read_from_file
 
 if __name__ == '__main__':
+    """
+    Train ResNet50 
+    """
 
     model_name = 'baseline_4_unordered_tfmode'
 
@@ -63,12 +66,6 @@ if __name__ == '__main__':
     # ordered data generator
     # train_generator = DataGenerator(train_pair, nb_classes, batch_size)
     # vali_generator = DataGenerator(vali_pair, nb_classes, batch_size)
-
-    # X_train, Y_train = read_data(local_path, fps, 1, 41, 'train')
-    # X_vali, Y_vali = read_data(local_path, fps, 42, 51, 'vali')
-    #
-    # train_generator = DataGenerator(X_train, Y_train, batch_size)
-    # vali_generator = DataGenerator(X_vali, Y_vali, batch_size)
 
     # define model structure
     # output feature vector of length 2048 for each frame

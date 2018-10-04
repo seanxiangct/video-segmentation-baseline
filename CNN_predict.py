@@ -4,13 +4,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import jaccard_similarity_score
 
-import utils.metrics
-import resnet
-import csv
+from modules.metrics import ComputeMetrics
 import os
 from keras.models import load_model
 
-from utils.utils import read_features, mask_data, unmask, read_from_file, read_from_pair
+from modules.utils import read_features, mask_data, unmask, read_from_file, read_from_pair
 
 
 if __name__ == '__main__':
@@ -26,7 +24,7 @@ if __name__ == '__main__':
     remote_test_path = '/home/cxia8134/data/test_labels'
 
     model = load_model(remote_model_path)
-    trial_metrics = metrics.ComputeMetrics(overlap=.1, bg_class=0)
+    trial_metrics = ComputeMetrics(overlap=.1, bg_class=0)
     trial_metrics.set_classes(nb_classes)
 
     acc = []

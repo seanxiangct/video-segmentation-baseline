@@ -1,4 +1,4 @@
-from utils.utils import read_labels_to_file, extract_frames
+from modules.utils import read_labels_to_file, extract_frames
 
 
 local_path = '/Users/seanxiang/data/cholec80/'

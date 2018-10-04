@@ -2,7 +2,7 @@ import os
 import numpy as np
 import scipy.ndimage as nd
 import scipy.io as sio
-import utils
+import modules
 
 
 def closest_file(fid, extension=".mat"):
@@ -104,12 +104,12 @@ class Dataset:
 
         # Make sure labels are sequential
         if self.n_classes != np.hstack(Y_all).max() + 1:
-            Y_all = utils.remap_labels(Y_all)
+            Y_all = modules.remap_labels(Y_all)
             print("Reordered class labels")
 
         # Subsample the data
         if sample_rate > 1:
-            X_all, Y_all = utils.subsample(X_all, Y_all, sample_rate, dim=0)
+            X_all, Y_all = modules.subsample(X_all, Y_all, sample_rate, dim=0)
 
         # ------------Train/test Splits---------------------------
         # Split data/labels into train/test splits

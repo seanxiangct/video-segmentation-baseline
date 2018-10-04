@@ -1,13 +1,10 @@
-import os
-from fnmatch import fnmatch
-
-from utils.utils import phase_length
+from modules.utils import phase_length
 import csv
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
-from matplotlib.collections import PatchCollection
+
+# Visualize experiments result given the prediction labels
 
 local_path = '/Users/seanxiang/data/cholec80/pred/'
 remote_path = '/home/cxia8134/dev/baseline/pred/'
@@ -23,8 +20,8 @@ colours = {
 }
 for i in range(20):
     # read prediction and label files
-    y_pred_name = '{}{}.txt'.format(local_path, i)
-    y_true_name = '{}{}_true.txt'.format(local_path, i)
+    y_pred_name = '{}{}.txt'.format(remote_path, i)
+    y_true_name = '{}{}_true.txt'.format(remote_path, i)
 
     y_pred = None
     y_true = None
@@ -42,6 +39,8 @@ for i in range(20):
     # find the length of each phase
     pred_phases = phase_length(y_pred)
     true_phases = phase_length(y_true)
+
+    print(true_phases)
 
     # set up layout
     fig = plt.figure(figsize=(8, 6))
@@ -83,5 +82,5 @@ for i in range(20):
         band = ax2.fill_between(x, 0, 1, where=(mask == 1), facecolors=colours[phase_label], alpha=1, label=phase_label)
 
     plt.legend(loc='best', ncol=8)
-    plt.savefig('visualization/{}.jpg'.format(i), transparent=False)
-    plt.show()
+    plt.savefig('../visualization/{}.jpg'.format(i), transparent=False)
+    # plt.show()

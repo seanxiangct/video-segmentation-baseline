@@ -92,6 +92,7 @@ def TCN_LSTM(n_nodes, conv_len, n_classes, n_feat, max_len,
     n_layers = len(n_nodes)
 
     inputs = Input(shape=(max_len, n_feat))
+    # inputs = Input(shape=(None, n_feat))
     model = inputs
 
     # ---- Encoder ----
