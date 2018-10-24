@@ -1,8 +1,9 @@
-from keras import backend as K
+from keras import backend as K, Sequential
 from keras import Input, Model
 from keras.layers import ZeroPadding1D, Conv1D, Cropping1D, SpatialDropout1D, Activation, Lambda, MaxPooling1D, \
-    TimeDistributed, Dense, UpSampling1D, multiply, LSTM, add, Bidirectional, BatchNormalization, GlobalAveragePooling1D, \
-    Embedding
+    TimeDistributed, Dense, UpSampling1D, multiply, LSTM, add, Bidirectional, BatchNormalization, \
+    GlobalAveragePooling1D, \
+    Embedding, Conv2D, MaxPooling2D, Flatten, Dropout, Permute
 
 
 def channel_normalization(x):
@@ -92,7 +93,7 @@ def TCN_LSTM(n_nodes, conv_len, n_classes, n_feat, max_len,
     n_layers = len(n_nodes)
 
     inputs = Input(shape=(max_len, n_feat))
-    # inputs = Input(shape=(None, n_feat))
+
     model = inputs
 
     # ---- Encoder ----
@@ -120,7 +121,7 @@ def TCN_LSTM(n_nodes, conv_len, n_classes, n_feat, max_len,
     for i in range(n_layers):
         model = UpSampling1D(2)(model)
         if online: model = ZeroPadding1D((conv_len // 2, 0))(model)
-        model = Bidirectional(LSTM(n_nodes[-i-1],
+        model = Bidirectional(LSTM(n_nodes[-i - 1],
                                    dropout=0.25,
                                    recurrent_dropout=0.25,
                                    return_sequences=True))(model)
@@ -152,6 +153,137 @@ def TCN_LSTM(n_nodes, conv_len, n_classes, n_feat, max_len,
         return model, param_str
     else:
         return model
+
+
+def attention_TCN_LSTM(n_nodes, conv_len, n_classes, n_feat, max_len,
+                       loss='categorical_crossentropy', online=False,
+                       optimizer="adam", activation='norm_relu',
+                       return_param_str=False):
+    n_layers = len(n_nodes)
+
+    inputs = Input(shape=(max_len, n_feat))
+
+    # attention layer, apply weightings to input
+    model = Permute((2, 1))(inputs)
+    model = Dense(max_len, activation='softmax')(model)
+    model = Permute((2, 1), name='attention_vec')(model)
+    model = multiply([inputs, model], name='attention_mul')
+
+    # ---- Encoder ----
+    for i in range(n_layers):
+        # Pad beginning of sequence to prevent usage of future data
+        if online: model = ZeroPadding1D((conv_len // 2, 0))(model)
+        # convolution over the temporal dimension
+        model = Conv1D(n_nodes[i], conv_len, padding='same')(model)
+        if online: model = Cropping1D((0, conv_len // 2))(model)
+
+        model = SpatialDropout1D(0.3)(model)
+
+        if activation == 'norm_relu':
+            model = Activation('relu')(model)
+            model = Lambda(channel_normalization, name="encoder_norm_{}".format(i))(model)
+        elif activation == 'wavenet':
+            model = WaveNet_activation(model)
+        else:
+            model = Activation(activation)(model)
+
+        # hidden features layer when in the last interation
+        model = MaxPooling1D(2)(model)
+
+    # ---- Decoder ----
+    for i in range(n_layers):
+        model = UpSampling1D(2)(model)
+        if online: model = ZeroPadding1D((conv_len // 2, 0))(model)
+        model = Bidirectional(LSTM(n_nodes[-i - 1],
+                                   dropout=0.25,
+                                   recurrent_dropout=0.25,
+                                   return_sequences=True))(model)
+        if online: model = Cropping1D((0, conv_len // 2))(model)
+
+        if activation == 'norm_relu':
+            model = Activation('relu')(model)
+            model = Lambda(channel_normalization, name="decoder_norm_{}".format(i))(model)
+        elif activation == 'wavenet':
+            model = WaveNet_activation(model)
+        else:
+            model = Activation(activation)(model)
+
+    # Output FC layer
+    model = TimeDistributed(Dense(n_classes, activation="softmax"))(model)
+
+    model = Model(inputs=inputs, outputs=model)
+    model.compile(loss=loss,
+                  optimizer=optimizer,
+                  sample_weight_mode="temporal",
+                  metrics=['accuracy'])
+    model.summary()
+
+    if return_param_str:
+        param_str = "ED-TCN_C{}_L{}".format(conv_len, n_layers)
+        if online:
+            param_str += "_online"
+
+        return model, param_str
+    else:
+        return model
+
+
+def lrcn(input_shape, n_classes):
+    """Build a CNN into RNN.
+    Starting version from:
+        https://github.com/udacity/self-driving-car/blob/master/
+            steering-models/community-models/chauffeur/models.py
+
+    Heavily influenced by VGG-16:
+        https://arxiv.org/abs/1409.1556
+
+    Also known as an LRCN:
+        https://arxiv.org/pdf/1411.4389.pdf
+    """
+    model = Sequential()
+
+    model.add(TimeDistributed(Conv2D(32, (7, 7), strides=(2, 2),
+                                     activation='relu', padding='same'), input_shape=input_shape))
+    model.add(TimeDistributed(Conv2D(32, (3, 3),
+                                     kernel_initializer="he_normal", activation='relu')))
+    model.add(TimeDistributed(MaxPooling2D((2, 2), strides=(2, 2))))
+
+    model.add(TimeDistributed(Conv2D(64, (3, 3),
+                                     padding='same', activation='relu')))
+    model.add(TimeDistributed(Conv2D(64, (3, 3),
+                                     padding='same', activation='relu')))
+    model.add(TimeDistributed(MaxPooling2D((2, 2), strides=(2, 2))))
+
+    model.add(TimeDistributed(Conv2D(128, (3, 3),
+                                     padding='same', activation='relu')))
+    model.add(TimeDistributed(Conv2D(128, (3, 3),
+                                     padding='same', activation='relu')))
+    model.add(TimeDistributed(MaxPooling2D((2, 2), strides=(2, 2))))
+
+    model.add(TimeDistributed(Conv2D(256, (3, 3),
+                                     padding='same', activation='relu')))
+    model.add(TimeDistributed(Conv2D(256, (3, 3),
+                                     padding='same', activation='relu')))
+    model.add(TimeDistributed(MaxPooling2D((2, 2), strides=(2, 2))))
+
+    model.add(TimeDistributed(Conv2D(512, (3, 3),
+                                     padding='same', activation='relu')))
+    model.add(TimeDistributed(Conv2D(512, (3, 3),
+                                     padding='same', activation='relu')))
+    model.add(TimeDistributed(MaxPooling2D((2, 2), strides=(2, 2))))
+
+    model.add(TimeDistributed(Flatten()))
+
+    model.add(Dropout(0.5))
+    model.add(LSTM(256, return_sequences=False, dropout=0.5))
+    model.add(Dense(n_classes, activation='softmax'))
+
+    model.compile(loss='categorical_crossentropy',
+                  optimizer='adam',
+                  metrics=['accuracy'])
+    model.summary()
+
+    return model
 
 
 def encoder_identify_block(input_tensor, n_nodes, conv_len):

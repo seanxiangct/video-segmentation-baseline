@@ -2,12 +2,13 @@
 import numpy as np
 from keras import Model, Input
 from keras.callbacks import ReduceLROnPlateau, EarlyStopping, TensorBoard
-from keras.layers import LSTM, Bidirectional, TimeDistributed, Dense
+from keras.layers import LSTM, Bidirectional, TimeDistributed, Dense, Activation, Embedding
 from keras.models import load_model
 
 from modules.metrics import ComputeMetrics
 from modules.utils import read_features, read_from_file
 from modules.DataGenerator import DataGenerator
+from TCN import lrcn
 
 if __name__ == '__main__':
     """
@@ -39,32 +40,36 @@ if __name__ == '__main__':
     train_generator = DataGenerator(train_pair, n_classes, batch_size)
     vali_generator = DataGenerator(vali_pair, n_classes, batch_size)
 
-    # defines model input
-    # inputs = Input(shape=(batch_size, n_timesteps, n_nodes))
+    # # defines model input
+    # # inputs = Input(shape=(batch_size, n_timesteps, n_nodes))
+    #
+    # # fine-turned ResNet50
+    # model = load_model(local_model_path + model_name)
+    #
+    # # remove the last softmax layer
+    # features_model = Model(inputs=model.layers[1].output, outputs=model.layers[-2].output)
+    #
+    # # add LSTM layer with single output
+    # lstm_model = Bidirectional(LSTM(n_nodes,
+    #                                 dropout=0.25,
+    #                                 recurrent_dropout=0.25,
+    #                                 return_sequences=True))(features_model.output)
+    #
+    # lstm_model = TimeDistributed(Dense(n_classes, activation="softmax"))(lstm_model)
+    # lstm_model.summary()
+    #
+    # lstm_model.compile(loss='categorical_crossentropy',
+    #                    optimizer='adam',
+    #                    metrics=['accuracy'])
 
-    # fine-turned ResNet50
-    model = load_model(local_model_path + model_name)
+    input_shape = (n_timesteps, 224, 224, 4)
+    model = lrcn(input_shape=input_shape,
+                 n_classes=n_classes)
 
-    # remove the last softmax layer
-    features_model = TimeDistributed(Model(inputs=model.input, outputs=model.layers[-2].output))
-
-    # add LSTM layer with single output
-    lstm_model = Bidirectional(LSTM(n_nodes,
-                                    dropout=0.25,
-                                    recurrent_dropout=0.25,
-                                    return_sequences=False))(features_model.output)
-    lstm_model = TimeDistributed(Dense(n_classes, activation="softmax"))(lstm_model)
-    lstm_model.summary()
-
-    lstm_model.compile(loss='categorical_crossentropy',
-                       optimizer='adam',
-                       metrics=['accuracy'])
-
-    lstm_model.fit_generator(generator=train_generator,
-                             validation_data=vali_generator,
-                             epochs=n_epoches,
-                             verbose=1,
-                             # class_weight=,
-                             workers=6,
-                             use_multiprocessing=True,
-                             callbacks=[lr_reducer, early_stopper, tensor_board])
+    model.fit_generator(generator=train_generator,
+                        validation_data=vali_generator,
+                        epochs=n_epoches,
+                        verbose=1,
+                        workers=6,
+                        use_multiprocessing=True,
+                        callbacks=[lr_reducer, early_stopper, tensor_board])

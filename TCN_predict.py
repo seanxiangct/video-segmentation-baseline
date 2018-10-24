@@ -1,9 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-import resnet
-import csv
-import os
 from modules.metrics import ComputeMetrics
 from keras.models import load_model
 
@@ -18,7 +15,7 @@ if __name__ == '__main__':
     max_len = 6000
     n_classes = 7
 
-    model_name = 'TCNLSTM-64,128,256nodes-32conv-classWeights-3.h5'
+    model_name = 'TCNLSTM-64,128,256nodes-64conv-SemiClassWeights-4.h5'
     remote_feats_path = '/home/cxia8134/dev/baseline/feats/'
     remote_model_path = '/home/cxia8134/dev/baseline/trained/'
 

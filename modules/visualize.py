@@ -1,8 +1,7 @@
-from modules.utils import phase_length
 import csv
-
 import numpy as np
 import matplotlib.pyplot as plt
+from modules.utils import phase_length
 
 # Visualize experiments result given the prediction labels
 
@@ -20,8 +19,8 @@ colours = {
 }
 for i in range(20):
     # read prediction and label files
-    y_pred_name = '{}{}.txt'.format(remote_path, i)
-    y_true_name = '{}{}_true.txt'.format(remote_path, i)
+    y_pred_name = '{}{}.txt'.format(local_path, i)
+    y_true_name = '{}{}_true.txt'.format(local_path, i)
 
     y_pred = None
     y_true = None
@@ -40,19 +39,16 @@ for i in range(20):
     pred_phases = phase_length(y_pred)
     true_phases = phase_length(y_true)
 
-    print(true_phases)
-
     # set up layout
     fig = plt.figure(figsize=(8, 6))
     ax1 = fig.add_subplot(211)
     ax2 = fig.add_subplot(212)
     ax1.plot(color='black')
 
+    # plotting ground truth
     start = 0
     for j in range(len(true_phases)):
-
         # for each phase, generate mask and plot a color band for it
-        # plot true phases
         mask = np.zeros(l)
         phase = true_phases[j]
         length = phase[0]
@@ -66,9 +62,9 @@ for i in range(20):
         band = ax1.fill_between(x, 0, 1, where=(mask == 1), facecolors=colours[phase_label], alpha=1, label=phase_label)
     plt.legend(loc='upper right', ncol=8)
 
+    # plotting predicted phases
     start = 0
     for j in range(len(pred_phases)):
-        # plot pred phases
         mask = np.zeros(l)
         phase = pred_phases[j]
         length = phase[0]
@@ -83,4 +79,4 @@ for i in range(20):
 
     plt.legend(loc='best', ncol=8)
     plt.savefig('../visualization/{}.jpg'.format(i), transparent=False)
-    # plt.show()
+    plt.show()

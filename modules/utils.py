@@ -37,7 +37,7 @@ def extract_frames(d_path, fps=25):
         for i, frame in enumerate(video_reader):
             if i % fps == 0:
                 # remove black boarders
-                frame = frame[:, 40:-55, :]
+                # frame = frame[:, 40:-55, :]
                 # downscale frame to (224, 224, 3)
                 frame = resize(frame, (224, 224, 3))
                 # extract frame to different folder
@@ -143,6 +143,40 @@ def read_labels_to_file(path, fps, start, end, source):
                         writer.writerow([img_path, phase_id])
 
 
+def read_labels_to_file_flow(path, fps, start, end, source):
+    """
+    Givne start and end index of videos, save (optical flow path, label) pairs into file
+    :param path:
+    :param fps:
+    :param start:
+    :param end:
+    :param source:
+    :return:
+    """
+    data_path = '{}{}_flow/'.format(path, source)
+    video_counter = 0
+    for n in range(start, end):
+        video_id = str(n).zfill(2)
+        label_path = '{}phase_annotations/video{}-phase.txt'.format(path, video_id)
+        dest_path = '{}{}_flow_labels/{}-{}.txt'.format(path, source, start, end)
+        with open(dest_path, 'a') as new_f:
+            # writing (path, label) pair to destination
+            writer = csv.writer(new_f, delimiter='\t')
+            with open(label_path) as f:
+                # reading labels from label files
+                reader = csv.reader(f, delimiter='\t')
+                next(reader)
+                flow_counter = 0
+                for i, row in enumerate(reader):
+                    if i % fps == 0:
+                        phase_name = row[1]
+                        phase_id = phase_mapping[phase_name]
+                        img_path = '{}video{}_flow{}.png'.format(data_path, video_counter, flow_counter)
+                        writer.writerow([img_path, phase_id])
+                        flow_counter += 1
+        video_counter += 1
+
+
 def data_generator(path, fps, start, end, source='train_frames', batch_size=32):
     data_path = '{}{}/'.format(path, source)
     label_path = path + 'phase_annotations/'
@@ -163,6 +197,12 @@ def data_generator(path, fps, start, end, source='train_frames', batch_size=32):
 
 
 def read_from_file(path):
+    """
+    read from csv data meta data
+    the csv file should contain (frame path, label) in each row
+    :param path: path of the csv file
+    :return: a list of [frame path, label]
+    """
     pair = []
     with open(path) as f:
         reader = csv.reader(f, delimiter='\t')
@@ -172,6 +212,14 @@ def read_from_file(path):
 
 
 def data_generator_from_labels(pair, idx, nb_classes, batch_size=32):
+    """
+    Sample random frames without replacement
+    :param pair: (image path, label) tuples
+    :param idx:
+    :param nb_classes:
+    :param batch_size:
+    :return:
+    """
     while 1:
         rand_indx = np.random.choice(a=idx, size=batch_size, replace=False)
 
@@ -180,6 +228,39 @@ def data_generator_from_labels(pair, idx, nb_classes, batch_size=32):
         for i in rand_indx:
             img_path = pair[i][0]
             img = cv2.cvtColor(imread(img_path), cv2.COLOR_BGRA2BGR)
+            img = preprocess_input(img, mode='tf')
+
+            y = np_utils.to_categorical(int(pair[i][1]), nb_classes)
+
+            batch_input += [img]
+            batch_output += [y]
+
+        batch_x = np.array(batch_input)
+        batch_y = np.array(batch_output)
+
+        yield (batch_x, batch_y)
+
+
+def flow_data_generator(pair, idx, nb_classes, batch_size=32):
+    """
+    Sample random frames without replacement
+    :param pair: (image path, label) tuples
+    :param idx:
+    :param nb_classes:
+    :param batch_size:
+    :return:
+    """
+    while 1:
+        rand_indx = np.random.choice(a=idx, size=batch_size, replace=False)
+
+        batch_input = []
+        batch_output = []
+        for i in rand_indx:
+            img_path = pair[i][0]
+            try:
+                img = imread(img_path)
+            except FileNotFoundError:
+                continue
             img = preprocess_input(img, mode='tf')
 
             y = np_utils.to_categorical(int(pair[i][1]), nb_classes)
@@ -355,8 +436,12 @@ def segment_lengths(Yi):
 ####
 # --------------------- plotting ---------------
 
-
 def phase_length(y):
+    """
+    find the length of each phase segment within video given the ground truth labels
+    :param y: ground truth labels (length, )
+    :return: array of (phase length, label)
+    """
     phase_counter = []
     counter = 0
     current = y[0]
@@ -365,12 +450,17 @@ def phase_length(y):
         if y[j] == current:
             counter += 1
         else:
-            phase_counter.append((counter, current[0]))
-            # phase_counter.append((counter, current))
+            if isinstance(current, list):
+                phase_counter.append((counter, current[0]))
+            else:
+                phase_counter.append((counter, current))
             current = y[j]
             counter = 0
 
-    phase_counter.append((counter, current[0]))
-    # phase_counter.append((counter, current))
+    if isinstance(current, list):
+        phase_counter.append((counter, current[0]))
+    else:
+        phase_counter.append((counter, current))
 
     return phase_counter
+

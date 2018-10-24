@@ -4,7 +4,7 @@ from keras.layers import Dense, Flatten
 from keras.models import Model
 from keras.applications.resnet50 import ResNet50, preprocess_input
 from keras.callbacks import ReduceLROnPlateau, EarlyStopping, TensorBoard
-from modules.utils import extract_frames, read_data, read_labels, data_generator_from_labels, read_from_file
+from modules.utils import flow_data_generator, read_from_file
 
 if __name__ == '__main__':
     """
@@ -17,30 +17,8 @@ if __name__ == '__main__':
     early_stopper = EarlyStopping(monitor='val_loss', min_delta=1e-6, patience=10)
     tensor_board = TensorBoard('log/' + model_name)
 
-    # path to the directory storing data and labels
-    # at 1fps sample rate:
-    # data size: 14.4GB
-    # number of frames in total: 184578
-    local_path = '/Users/seanxiang/data/cholec80/'
-    local_train_path = '/Users/seanxiang/data/cholec80/train_frames/'
-    local_vali_path = '/Users/seanxiang/data/cholec80/vali_frames/'
-    local_label_path = '/Users/seanxiang/data/cholec80/phase_annotations/'
-    local_train_pair = '/Users/seanxiang/data/cholec80/train_labels/labels.txt'
-    local_vali_pair = '/Users/seanxiang/data/cholec80/vali_labels/labels.txt'
-
-    remote_path = '/home/cxia8134/data/'
-    remote_train_path = '/home/cxia8134/data/train_frames/'
-    remote_vali_path = '/home/cxia8134/data/vali_frames/'
-    remote_label_path = '/home/cxia8134/data/phase_annotations/'
-    remote_train_pair = '/home/cxia8134/data/old_labels/1-41.txt'
-    remote_vali_pair = '/home/cxia8134/data/old_labels/41-51.txt'
-
-    train_folder = 'train_frames'
-    vali_folder = 'vali_frames'
-
-    # extracting frames from videos at 1fps
-    fps = 25
-    # extract_frames(data_path, 25)
+    remote_train_path = '/home/cxia8134/data/train_flow_labels/1-51.txt'
+    remote_vali_path = '/home/cxia8134/data/vali_flow_labels/51-61.txt'
 
     batch_size = 32
     nb_classes = 7
@@ -50,18 +28,14 @@ if __name__ == '__main__':
     n_train = 86344
     n_vali = 21108
 
-    # train_pair = read_from_file(local_train_pair)
-    # vali_pair = read_from_file(local_vali_pair)
-    train_pair = read_from_file(local_train_pair)
-    vali_pair = read_from_file(local_vali_pair)
-
-    # testx, testy = data_generator_test(train_pair, nb_classes, batch_size)
+    train_pair = read_from_file(remote_train_path)
+    vali_pair = read_from_file(remote_vali_path)
 
     # unordered data generator
     train_idx = np.array(len(train_pair))
     vali_idx = np.array(len(vali_pair))
-    train_generator = data_generator_from_labels(train_pair, train_idx, nb_classes, batch_size)
-    vali_generator = data_generator_from_labels(vali_pair, vali_idx, nb_classes, batch_size)
+    train_generator = flow_data_generator(train_pair, train_idx, nb_classes, batch_size)
+    vali_generator = flow_data_generator(vali_pair, vali_idx, nb_classes, batch_size)
 
     # ordered data generator
     # train_generator = DataGenerator(train_pair, nb_classes, batch_size)
