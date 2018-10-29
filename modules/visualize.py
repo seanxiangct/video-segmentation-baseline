@@ -8,6 +8,8 @@ from modules.utils import phase_length
 local_path = '/Users/seanxiang/data/cholec80/pred/'
 remote_path = '/home/cxia8134/dev/baseline/pred/'
 
+model_name = 'BiLSTM-500nodes-noMask-LSTMattentionBefore-5-07-0.94'
+
 colours = {
     '0': 'red',  # preparation
     '1': 'green',  # calot triangle dissection
@@ -17,10 +19,11 @@ colours = {
     '5': 'pink',  # cleaning and coagulation
     '6': 'saddlebrown'  # gallbladder retraction
 }
+
 for i in range(20):
     # read prediction and label files
-    y_pred_name = '{}{}.txt'.format(local_path, i)
-    y_true_name = '{}{}_true.txt'.format(local_path, i)
+    y_pred_name = '{}{}.txt'.format(remote_path, i)
+    y_true_name = '{}{}_true.txt'.format(remote_path, i)
 
     y_pred = None
     y_true = None
@@ -60,7 +63,7 @@ for i in range(20):
 
         co = colours[phase_label]
         band = ax1.fill_between(x, 0, 1, where=(mask == 1), facecolors=colours[phase_label], alpha=1, label=phase_label)
-    plt.legend(loc='upper right', ncol=8)
+    # plt.legend(loc='upper right', ncol=8)
 
     # plotting predicted phases
     start = 0
@@ -77,6 +80,6 @@ for i in range(20):
         co = colours[phase_label]
         band = ax2.fill_between(x, 0, 1, where=(mask == 1), facecolors=colours[phase_label], alpha=1, label=phase_label)
 
-    plt.legend(loc='best', ncol=8)
-    plt.savefig('../visualization/{}.jpg'.format(i), transparent=False)
+    # plt.legend(loc='best', ncol=8)
+    plt.savefig('../visualization/{}-{}.jpg'.format(model_name, i), transparent=False)
     plt.show()

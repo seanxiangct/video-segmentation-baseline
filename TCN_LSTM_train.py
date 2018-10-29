@@ -1,30 +1,36 @@
-from keras.callbacks import ReduceLROnPlateau, EarlyStopping, TensorBoard
+from keras.callbacks import ReduceLROnPlateau, EarlyStopping, TensorBoard, ModelCheckpoint
 import numpy as np
 
-from TCN import TCN_LSTM, residual_TCN_LSTM, ED_TCN, attention_TCN_LSTM
+from TCN import TCN_LSTM, residual_TCN_LSTM, ED_TCN, attention_TCN_LSTM, ED_TCN
 from modules.utils import read_from_file, read_features, mask_data, phase_length
 from sklearn.utils import class_weight
 
-# import tensorflow as tf
-# from keras.backend.tensorflow_backend import set_session
-# config = tf.ConfigProto()
-# config.gpu_options.per_process_gpu_memory_fraction = 0.3
-# set_session(tf.Session(config=config))
+from keras.utils import multi_gpu_model
+
+import tensorflow as tf
+from keras.backend.tensorflow_backend import set_session
+config = tf.ConfigProto()
+config.gpu_options.per_process_gpu_memory_fraction = 0.3
+set_session(tf.Session(config=config))
 
 local_feats_path = '/Users/seanxiang/data/cholec80/feats/'
 remote_feats_path = '/home/cxia8134/dev/baseline/feats/'
 
-model_name = 'attention-TCNLSTM-64,128,256nodes-16conv-sampleweights-4'
+model_name = 'TCN-576,288nodes-32conv-attention-1'
 
 lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0, patience=7, min_lr=0.5e-6, mode='auto')
 early_stopper = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=10)
 tensor_board = TensorBoard('log/' + model_name)
+# save model if validation loss decreased
+checkpointer = ModelCheckpoint(filepath='/home/cxia8134/dev/baseline/temp/{epoch:02d}-{val_loss:.2f}.hdf5',
+                               verbose=1,
+                               save_best_only=True)
 
-n_nodes = [64, 128, 256]
-nb_epoch = 100
+n_nodes = [576, 288]
+nb_epoch = 200
 nb_classes = 7
-batch_size = 4
-conv_len = [8, 16, 32, 64, 128][1]
+batch_size = 10
+conv_len = [8, 16, 32, 64, 128][2]
 n_feat = 2048
 max_len = 6000
 
@@ -96,13 +102,15 @@ for sample in Y_train:
 sample_weights = np.array(sample_weights)
 
 # ED-CNN
-model = attention_TCN_LSTM(n_nodes=n_nodes,
-                           conv_len=conv_len,
-                           n_classes=nb_classes,
-                           n_feat=n_feat,
-                           max_len=max_len,
-                           online=False,
-                           return_param_str=False)
+model = ED_TCN(n_nodes=n_nodes,
+               conv_len=conv_len,
+               n_classes=nb_classes,
+               n_feat=n_feat,
+               max_len=max_len,
+               optimizer='adam',
+               attention=True,
+               online=False,
+               return_param_str=False)
 
 # train with extracted features from each video
 # start with video without sample weighting
@@ -122,8 +130,8 @@ model.fit(x=X_train_m,
           epochs=nb_epoch,
           batch_size=batch_size,
           verbose=1,
-          # sample_weight=M_train[:, :, 0],
-          sample_weight=sample_weights,
-          callbacks=[lr_reducer, early_stopper, tensor_board])
+          sample_weight=M_train[:, :, 0],
+          # sample_weight=sample_weights,
+          callbacks=[lr_reducer, early_stopper, tensor_board, checkpointer])
 
 model.save('trained/' + model_name + '.h5')

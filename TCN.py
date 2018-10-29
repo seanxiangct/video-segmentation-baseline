@@ -19,14 +19,28 @@ def WaveNet_activation(x):
     return multiply([tanh_out, sigm_out])
 
 
+
+def attention_block(inputs):
+    input_dim = int(inputs.shape[2])
+
+
 def ED_TCN(n_nodes, conv_len, n_classes, n_feat, max_len,
            loss='categorical_crossentropy', online=False,
            optimizer="rmsprop", activation='norm_relu',
+           attention=True,
            return_param_str=False):
     n_layers = len(n_nodes)
 
     inputs = Input(shape=(max_len, n_feat))
-    model = inputs
+
+    # attention layer, apply weightings to input
+    if attention:
+        # model = Permute((2, 1))(inputs)
+        model = Dense(max_len, activation='softmax', name='attention_probs')(inputs)
+        # model = Permute((2, 1), name='attention_vec')(model)
+        model = multiply([inputs, model], name='attention_mul')
+    else:
+        model = inputs
 
     # ---- Encoder ----
     for i in range(n_layers):
@@ -158,16 +172,21 @@ def TCN_LSTM(n_nodes, conv_len, n_classes, n_feat, max_len,
 def attention_TCN_LSTM(n_nodes, conv_len, n_classes, n_feat, max_len,
                        loss='categorical_crossentropy', online=False,
                        optimizer="adam", activation='norm_relu',
+                       attention=True,
                        return_param_str=False):
     n_layers = len(n_nodes)
 
     inputs = Input(shape=(max_len, n_feat))
 
+    model = None
     # attention layer, apply weightings to input
-    model = Permute((2, 1))(inputs)
-    model = Dense(max_len, activation='softmax')(model)
-    model = Permute((2, 1), name='attention_vec')(model)
-    model = multiply([inputs, model], name='attention_mul')
+    if attention:
+        model = Permute((2, 1))(inputs)
+        model = Dense(max_len, activation='softmax')(model)
+        model = Permute((2, 1), name='attention_vec')(model)
+        model = multiply([inputs, model], name='attention_mul')
+    else:
+        model = inputs
 
     # ---- Encoder ----
     for i in range(n_layers):

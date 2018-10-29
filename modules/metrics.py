@@ -189,6 +189,10 @@ def edit_score(P, Y, norm=True, bg_class=None, **kwargs):
         return levenstein_(P_, Y_, norm)
 
 
+def jaccard_score(P, Y):
+    return
+
+
 def overlap_f1(P, Y, n_classes=0, bg_class=None, overlap=.1, **kwargs):
     def overlap_(p, y, n_classes, bg_class, overlap):
 

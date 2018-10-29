@@ -1,78 +1,79 @@
-from random import randint
-from numpy import array
-from numpy import argmax
-from numpy import array_equal
-from keras.models import Sequential
-from keras.layers import LSTM
-from keras.layers import Dense
-from keras.layers import TimeDistributed
-from keras.layers import RepeatVector
+from keras import Input, Model, Sequential
+from keras.layers import LSTM, Bidirectional, TimeDistributed, Dense
+from keras.callbacks import ReduceLROnPlateau, EarlyStopping, TensorBoard
+import numpy as np
 
+import seq2seq
+from seq2seq.models import SimpleSeq2Seq, Seq2Seq, AttentionSeq2Seq
 
-# generate a sequence of random integers
-def generate_sequence(length, n_unique):
-    return [randint(0, n_unique - 1) for _ in range(length)]
+from TCN import ED_TCN
+from modules.utils import read_from_file, read_features, mask_data
 
+remote_feats_path = '/home/cxia8134/dev/baseline/feats/'
+remote_train_path = '/home/cxia8134/dev/baseline/feats/train'
+remote_vali_path = '/home/cxia8134/dev/baseline/feats/vali'
 
-# one hot encode sequence
-def one_hot_encode(sequence, n_unique):
-    encoding = list()
-    for value in sequence:
-        vector = [0 for _ in range(n_unique)]
-        vector[value] = 1
-        encoding.append(vector)
-    return array(encoding)
+model_name = 'BidirectionalLSTM-encoder-decoder-without_peek-1'
 
+lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0, patience=5, min_lr=0.5e-6, mode='auto')
+early_stopper = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=10)
+tensor_board = TensorBoard('log/' + model_name)
 
-# decode a one hot encoded string
-def one_hot_decode(encoded_seq):
-    return [argmax(vector) for vector in encoded_seq]
+seq_length = 20
+n_nodes = [96, 192]
+nb_epoch = 100
+nb_classes = 7
+batch_size = 32
+conv_len = [8, 16, 32, 64, 128][2]
 
+n_timesteps_in = 30
+n_feat = 2048
+max_len = 6000
 
-# prepare data for the LSTM
-def get_pair(n_in, n_out, cardinality):
-    # generate random sequence
-    sequence_in = generate_sequence(n_in, cardinality)
-    sequence_out = sequence_in[:n_out] + [0 for _ in range(n_in - n_out)]
-    # one hot encode
-    X = one_hot_encode(sequence_in, cardinality)
-    y = one_hot_encode(sequence_out, cardinality)
-    # reshape as 3D
-    X = X.reshape((1, X.shape[0], X.shape[1]))
-    y = y.reshape((1, y.shape[0], y.shape[1]))
-    return X, y
+X_train, Y_train = read_features(remote_feats_path, 'train')
+X_vali, Y_vali = read_features(remote_feats_path, 'vali')
 
+X_train_m, Y_train_, M_train = mask_data(X_train, Y_train, max_len, mask_value=-1)
+X_vali_m, Y_vali_, M_vali = mask_data(X_vali, Y_vali, max_len, mask_value=-1)
 
-# configure problem
-n_features = 50
-n_timesteps_in = 5
-n_timesteps_out = 2
-# define model
-model = Sequential()
-model.add(LSTM(150, input_shape=(n_timesteps_in, n_features)))
-model.add(RepeatVector(n_timesteps_in))
-model.add(LSTM(150, return_sequences=True))
-model.add(TimeDistributed(Dense(n_features, activation='softmax')))
-model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['acc'])
+# use validation split provided by keras.model.fit instead
+# X_train_m = np.vstack((X_train_m, X_vali_m))
+# Y_train_ = np.vstack((Y_train_, Y_vali_))
 
+# bidirectional LSTM
+# model = Sequential()
+# model.add(Bidirectional(LSTM(500, return_sequences=True,
+#                              dropout=0.25,
+#                              recurrent_dropout=0.25,
+#                              input_shape=(n_timesteps_in, n_feat))))
+# model.add(TimeDistributed(Dense(nb_classes, activation="softmax")))
+# model.compile(loss='categorical_crossentropy',
+#               optimizer='adam',
+#               sample_weight_mode='temporal',
+#               metrics=['acc'])
+
+model = AttentionSeq2Seq(input_dim=n_feat,
+                         input_length=max_len,
+                         hidden_dim=20,
+                         output_length=max_len,
+                         output_dim=nb_classes,
+                         depth=4)
+model.compile(loss='categorical_crossentropy',
+              optimizer='adam',
+              sample_weight_mode='temporal',
+              metrics=['acc'])
 model.summary()
 
-# train LSTM
-for epoch in range(5000):
-    # generate new random sequence
-    X, y = get_pair(n_timesteps_in, n_timesteps_out, n_features)
-    # fit model for one epoch on this sequence
-    model.fit(X, y, epochs=1, verbose=2)
-# evaluate LSTM
-total, correct = 100, 0
-for _ in range(total):
-    X, y = get_pair(n_timesteps_in, n_timesteps_out, n_features)
-    yhat = model.predict(X, verbose=0)
-    if array_equal(one_hot_decode(y[0]), one_hot_decode(yhat[0])):
-        correct += 1
-print('Accuracy: %.2f%%' % (float(correct) / float(total) * 100.0))
-# spot check some examples
-for _ in range(10):
-    X, y = get_pair(n_timesteps_in, n_timesteps_out, n_features)
-    yhat = model.predict(X, verbose=0)
-    print('Expected:', one_hot_decode(y[0]), 'Predicted', one_hot_decode(yhat[0]))
+# train with extracted features from each video
+model.fit(x=X_train_m,
+          y=Y_train_,
+          validation_data=(X_vali_m, Y_vali_, M_vali[:, :, 0]),
+          # validation_split=0.1,
+          epochs=nb_epoch,
+          batch_size=5,
+          verbose=1,
+          sample_weight=M_train[:, :, 0],
+          shuffle=False,
+          callbacks=[lr_reducer, early_stopper, tensor_board])
+
+model.save('trained/' + model_name + '.h5')

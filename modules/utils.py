@@ -6,11 +6,14 @@ import matplotlib.pyplot as plt
 import glob
 import os
 import cv2
+import keras.applications.resnet50 as resnet
+import keras.applications.densenet as densenet
 from keras.utils import np_utils
 from skvideo.io import vreader
 from skimage.transform import resize
 from skimage.io import imread_collection, imread
 from keras.applications.resnet50 import preprocess_input
+from sklearn.utils import class_weight
 
 phase_mapping = {
     'Preparation': 0,
@@ -211,7 +214,7 @@ def read_from_file(path):
     return pair
 
 
-def data_generator_from_labels(pair, idx, nb_classes, batch_size=32):
+def data_generator_from_labels(pair, idx, nb_classes, batch_size=32, model='resnet'):
     """
     Sample random frames without replacement
     :param pair: (image path, label) tuples
@@ -228,7 +231,10 @@ def data_generator_from_labels(pair, idx, nb_classes, batch_size=32):
         for i in rand_indx:
             img_path = pair[i][0]
             img = cv2.cvtColor(imread(img_path), cv2.COLOR_BGRA2BGR)
-            img = preprocess_input(img, mode='tf')
+            if model == 'resnet':
+                img = resnet.preprocess_input(img, mode='tf')
+            elif model == 'densenet':
+                img = densenet.preprocess_input(img, mode='tf')
 
             y = np_utils.to_categorical(int(pair[i][1]), nb_classes)
 
@@ -450,17 +456,120 @@ def phase_length(y):
         if y[j] == current:
             counter += 1
         else:
-            if isinstance(current, list):
+            if isinstance(current, (list, np.ndarray)):
                 phase_counter.append((counter, current[0]))
             else:
                 phase_counter.append((counter, current))
             current = y[j]
             counter = 0
 
-    if isinstance(current, list):
+    if isinstance(current, (list, np.ndarray)):
         phase_counter.append((counter, current[0]))
     else:
         phase_counter.append((counter, current))
 
     return phase_counter
 
+
+# ------------- model utils -----------------------
+def freeeze_attention(model):
+    model.get_layer('weighting').trainable = False
+    model.get_layer('attention_vec').trainable = False
+    return model
+
+
+def unfreeze_attention(model):
+    model.get_layer('weighting').trainable = True
+    model.get_layer('attention_vec').trainable = True
+    return model
+
+
+def freeze_LSTM(model):
+    model.get_layer('bilstm').trainable = False
+    return model
+
+
+def unfreeze_LSTM(model):
+    model.get_layer('bilstm').trainable = True
+    return model
+
+
+def sample_weights(Y_train, max_len=None):
+    sample_weights = []
+    for sample in Y_train:
+
+        labels = np.array([np.argmax(y, axis=None, out=None) for y in sample])
+        # weights for each class
+        weights = class_weight.compute_class_weight('balanced',
+                                                    np.unique(labels),
+                                                    labels)
+
+        # an array has the length with the video
+        frame_weights = []
+        # find the length of each phase segments is an array with the length of the number of classes and containing the
+        # values corresponding (length, label) to each class
+        segments = phase_length(labels)
+
+        # add frame weighting based on frame phases
+        for i, s in enumerate(segments):
+            length = s[0]
+            label = s[1]
+            weight = 0
+            if len(segments) == len(weights):
+                weight = weights[i]
+            elif len(segments) > len(weights):
+                # when phases going back and forth
+                try:
+                    weight = weights[label]
+                except IndexError:
+                    weight = weights[i]
+
+            phase = [weight] * length
+            frame_weights.extend(phase)
+
+        # add mask weighting
+        if max_len is not None:
+            if len(frame_weights) != max_len:
+                frame_weights.extend(np.zeros(max_len - len(frame_weights)))
+
+        sample_weights.append(np.array(frame_weights))
+
+    return np.array(sample_weights)
+
+
+# without masking
+def train_generator(X_train, Y_train, sample_weights=None):
+    i = 0
+    l = len(X_train)
+    while True:
+        if i > (l - 1):
+            i = 0
+        x = X_train[i]
+        y = Y_train[i]
+        i += 1
+        if sample_weights is not None:
+            yield np.expand_dims(x, axis=0), np.expand_dims(y, axis=0), np.expand_dims(sample_weights[i], axis=0)
+        yield np.expand_dims(x, axis=0), np.expand_dims(y, axis=0)
+
+
+def vali_generator(X_vali, Y_vali, sample_weights=None):
+    i = 0
+    l = len(X_vali)
+    while True:
+        if i > (l - 1):
+            i = 0
+        x = X_vali[i]
+        y = Y_vali[i]
+        i += 1
+        if sample_weights is not None:
+            yield np.expand_dims(x, axis=0), np.expand_dims(y, axis=0), np.expand_dims(sample_weights[i], axis=0)
+        yield np.expand_dims(x, axis=0), np.expand_dims(y, axis=0)
+
+
+def cal_avg_len(X_train):
+    l = len(X_train)
+    sum = 0
+    for v in X_train:
+        v_l = len(v)
+        sum += v_l
+    return sum // l
