@@ -3,7 +3,7 @@ from keras import Input, Model
 from keras.layers import ZeroPadding1D, Conv1D, Cropping1D, SpatialDropout1D, Activation, Lambda, MaxPooling1D, \
     TimeDistributed, Dense, UpSampling1D, multiply, LSTM, add, Bidirectional, BatchNormalization, \
     GlobalAveragePooling1D, \
-    Embedding, Conv2D, MaxPooling2D, Flatten, Dropout, Permute
+    Embedding, Conv2D, MaxPooling2D, Flatten, Dropout, Permute, Multiply, Softmax, regularizers
 
 
 def channel_normalization(x):
@@ -19,9 +19,15 @@ def WaveNet_activation(x):
     return multiply([tanh_out, sigm_out])
 
 
-
-def attention_block(inputs):
-    input_dim = int(inputs.shape[2])
+def attention_block(inputs, length):
+    lstm = Bidirectional(LSTM(length, return_sequences=True,
+                              dropout=0.5,
+                              recurrent_dropout=0.5,
+                              kernel_regularizer=regularizers.l2(0.01)))(inputs)
+    attention = TimeDistributed(Dense(1))(lstm)
+    attention = Softmax(axis=1, name='attention_vec')(attention)
+    context = Multiply(name='attention_mul')([attention, lstm])
+    return context
 
 
 def ED_TCN(n_nodes, conv_len, n_classes, n_feat, max_len,
@@ -31,14 +37,12 @@ def ED_TCN(n_nodes, conv_len, n_classes, n_feat, max_len,
            return_param_str=False):
     n_layers = len(n_nodes)
 
-    inputs = Input(shape=(max_len, n_feat))
+    # inputs = Input(shape=(max_len, n_feat))
+    inputs = Input(shape=(None, n_feat))
 
     # attention layer, apply weightings to input
     if attention:
-        # model = Permute((2, 1))(inputs)
-        model = Dense(max_len, activation='softmax', name='attention_probs')(inputs)
-        # model = Permute((2, 1), name='attention_vec')(model)
-        model = multiply([inputs, model], name='attention_mul')
+        model = attention_block(inputs, 100)
     else:
         model = inputs
 

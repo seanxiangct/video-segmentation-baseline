@@ -345,17 +345,19 @@ def read_from_pair(pairs, nb_classes):
     return np.array(data), np.array(labels)
 
 
-def read_features(path, source):
+def read_features(path, f_type, source):
     """
     read features, labels and length from x-x+1.h5 feature files
     :param path: path of the feats folder
+    :param f_type: which type of feature extraction model is using, either ResNet or DenseNet
     :param source: subdirectory, could be train, vali or test
     :return: features, one-hot-encoded labels
     """
 
     train = []
     labels = []
-    feats_path = path + source
+    # feats_path = path + source
+    feats_path = '{}{}/{}'.format(path, f_type, source)
     for i, f in enumerate(sorted(os.listdir(feats_path)), start=0):
         h5f = h5py.File('{}/{}'.format(feats_path, f), 'r')
         train.append(h5f['feats'][:])

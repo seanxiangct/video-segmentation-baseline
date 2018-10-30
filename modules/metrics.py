@@ -15,7 +15,7 @@ class ComputeMetrics:
     metric_types = ["accuracy", "edit_score", "overlap_f1"]
     metric_types += ["macro_accuracy", "acc_per_class"]
     metric_types += ["classification_accuracy"]
-    # metric_types += ["precision", "recall"]
+    metric_types += ["precision", "recall"]
     # metric_types += ["mAP1", "mAP5", "midpoint"]
     trials = []
 

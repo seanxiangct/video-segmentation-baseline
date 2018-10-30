@@ -1,3 +1,9 @@
+import os
+
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+# The GPU id to use, usually either "0" or "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+
 import h5py
 import os
 from keras.models import load_model
@@ -33,14 +39,13 @@ def extract_features(model, path, source, batch_size=32, nb_classes=7):
 
 
 if __name__ == '__main__':
-
     batch_size = 32
     nb_classes = 7
 
     local_model_path = '/Users/seanxiang/data/trained/baseline_4_unordered_tfmode.h5'
     local_test_path = '/Users/seanxiang/data/cholec80/test_labels'
 
-    remote_model_path = '/home/cxia8134/dev/baseline/trained/baseline_4_unordered_tfmode.h5'
+    remote_model_path = '/home/cxia8134/dev/baseline/trained/DenseNet_1.h5'
     remote_train_path = '/home/cxia8134/data/train_labels'
     remote_vali_path = '/home/cxia8134/data/vali_labels'
     remote_test_path = '/home/cxia8134/data/test_labels'

@@ -10,7 +10,8 @@ import numpy as np
 from keras.layers import Bidirectional, LSTM, TimeDistributed, Dense, Permute, Lambda, K, RepeatVector, multiply, \
     Flatten, CuDNNLSTM, Softmax, Multiply
 
-from modules.utils import read_from_file, read_features, mask_data, phase_length, sample_weights, cal_avg_len
+from modules.utils import read_from_file, read_features, mask_data, phase_length, sample_weights, cal_avg_len, \
+    train_generator, vali_generator
 from sklearn.utils import class_weight
 
 # import tensorflow as tf
@@ -22,7 +23,7 @@ from sklearn.utils import class_weight
 local_feats_path = '/Users/seanxiang/data/cholec80/feats/'
 remote_feats_path = '/home/cxia8134/dev/baseline/feats/'
 
-model_name = 'BiLSTM-500nodes-noMask-100attentionBefore-0.1l2-8'
+model_name = 'BiLSTM-500nodes-noMask-densenetFeats-8'
 
 lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0, patience=7, min_lr=0.5e-6, mode='auto')
 early_stopper = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=10)
@@ -67,12 +68,13 @@ n_feat = 2048
 max_len = 6000
 l2_norm = 0.01
 attention_length = 100
+feats = ['resnet', 'densenet'][1]
 SINGLE_ATTENTION_VECTOR = False
 
 path = remote_feats_path
 
-X_train, Y_train = read_features(path, 'train')
-X_vali, Y_vali = read_features(path, 'vali')
+X_train, Y_train = read_features(path, feats, 'train')
+X_vali, Y_vali = read_features(path, feats, 'vali')
 
 # TODO: append frame id to feature
 
@@ -87,14 +89,20 @@ X_vali, Y_vali = read_features(path, 'vali')
 
 inputs = Input(shape=(None, n_feat))
 
-model = attention_block(inputs, 100)
+# model = attention_block(inputs, 100)
 
 model = Bidirectional(LSTM(n_nodes,
                            return_sequences=True,
                            input_shape=(batch_size, None, n_feat),
                            dropout=0.5,
                            name='bilstm',
-                           recurrent_dropout=0.25))(model)
+                           recurrent_dropout=0.25))(inputs)
+# model = LSTM(n_nodes,
+#              return_sequences=True,
+#              input_shape=(batch_size, None, n_feat),
+#              dropout=0.5,
+#              name='bilstm',
+#              recurrent_dropout=0.25)(inputs)
 
 # attention layer
 # model = attention_3d_block(model)
@@ -111,7 +119,6 @@ model.compile(loss='categorical_crossentropy',
               metrics=['accuracy'])
 model.summary()
 
-
 # train on videos with sample weighting
 # model.fit(x=X_train_m,
 #           y=Y_train_,
@@ -122,7 +129,6 @@ model.summary()
 #           # sample_weight=M_train[:, :, 0],
 #           sample_weight=sample_weights,
 #           callbacks=[lr_reducer, early_stopper, tensor_board, checkpointer])
-
 
 
 model.fit_generator(train_generator(X_train, Y_train),
